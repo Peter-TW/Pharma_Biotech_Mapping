@@ -1,0 +1,10 @@
+# Biopharma Command Center — MVP-1 dependencies
+# Pinned for reproducible Streamlit Community Cloud builds.
+
+streamlit==1.39.0
+pandas==2.2.3
+plotly==5.24.1
+
+# streamlit-echarts removed: the timeline is rendered with Plotly, so the
+# package is unused. streamlit-agraph is intentionally NOT included — it
+# belongs to the MVP-2 relationship map.
