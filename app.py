@@ -15,6 +15,19 @@ st.set_page_config(
     layout="wide",
 )
 
+# Force dark theme palette
+st.markdown(
+    """
+    <style>
+    .stApp, [data-testid="stAppViewContainer"], .block-container {
+        background-color: #0E1117 !important;
+        color: #E6E9EF !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 # ── Banner ──────────────────────────────────────────────────────────
 st.markdown(
     """
