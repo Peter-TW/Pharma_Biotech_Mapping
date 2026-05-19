@@ -33,7 +33,7 @@ def load_financials() -> pd.DataFrame:
     """Load Quarterly_Financials.csv with date parsing and numeric coercion."""
     df = pd.read_csv(DATA_DIR / "Quarterly_Financials.csv", encoding="utf-8-sig")
     df["Quarter_End_Date"] = pd.to_datetime(
-        df["Quarter_End_Date"], dayfirst=True, errors="coerce"
+        df["Quarter_End_Date"], format="mixed", dayfirst=True, errors="coerce"
     )
     for col in FINANCIAL_COLS:
         df[col] = pd.to_numeric(df[col], errors="coerce")
