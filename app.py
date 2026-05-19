@@ -1,13 +1,13 @@
 """
 app.py — Biopharma Command Center (MVP-1)
-Single-page Streamlit dashboard with 6 modules.
+Single-page Streamlit dashboard.
 """
 
 import pandas as pd
 import streamlit as st
 
 from data import load_master, load_financials, get_latest_financials, get_lifecycle
-from charts import render_lifecycle_strip, render_reporting_timeline
+from charts import render_lifecycle_strip, render_financial_trend
 
 st.set_page_config(
     page_title="Biopharma Command Center",
@@ -25,8 +25,8 @@ st.markdown(
         💊 Biopharma Command Center
       </div>
       <div style="font-size:13px; color:#8A91A0; margin-top:2px;">
-        Company intelligence map &middot; lifecycle footprint, financial
-        snapshot &amp; reporting audit
+        Company intelligence map &middot; sector overview, lifecycle footprint,
+        financial snapshot &amp; trend
       </div>
     </div>
     """,
@@ -39,39 +39,82 @@ financials = load_financials()
 latest = get_latest_financials(financials)
 lifecycle_df = get_lifecycle(master)
 
+FULL_CYCLE_LABEL = "Full-cycle (all 5 stages)"
+QUARTERS = ["Q1", "Q2", "Q3", "Q4"]
+METRICS = {
+    "Revenue": "Q_Revenue",
+    "R&D": "Q_RD",
+    "SG&A": "Q_SGA",
+    "Cash": "Q_Cash",
+    "Market Cap": "Market_Cap_USD_M",
+}
+
 
 # ── Formatting helpers ──────────────────────────────────────────────
 
 def fmt_money(value):
-    """USD millions -> compact string ($X.XB or $XXXM). NaN -> em dash."""
+    """USD millions -> compact string ($X.XXT / $X.XB / $XXXM). NaN -> em dash."""
     if pd.isna(value):
         return "—"
-    if abs(value) >= 1000:
+    a = abs(value)
+    if a >= 1_000_000:
+        return f"${value / 1_000_000:,.2f}T"
+    if a >= 1000:
         return f"${value / 1000:,.1f}B"
     return f"${value:,.0f}M"
 
 
 def fmt_multiple(value):
-    """Ratio as a multiple, e.g. 0.20x. NaN -> em dash."""
     if pd.isna(value):
         return "—"
     return f"{value:.2f}\u00d7"
 
 
 def fmt_pct(value):
-    """Ratio as a percentage. NaN -> em dash."""
     if pd.isna(value):
         return "—"
     return f"{value:.1%}"
 
 
-# ── Module 1: Sidebar — Company Selector ────────────────────────────
-company_names = sorted(master["Company Name"].dropna().tolist())
-selected_name = st.sidebar.selectbox("Select Company", company_names)
-st.sidebar.caption(f"{len(company_names)} companies · MVP-1")
+def field(value):
+    """Display a master/financials field, or an em dash if blank/NaN."""
+    s = "" if value is None else str(value).strip()
+    if s == "" or s.lower() == "nan":
+        return "—"
+    return s
+
+
+# ── Sidebar: lifecycle filter + company selector ────────────────────
+lifecycle_choice = st.sidebar.radio(
+    "Lifecycle filter",
+    ["All companies", "Full-cycle only", "Non-full-cycle only"],
+)
+
+full_ids = set(
+    lifecycle_df.loc[lifecycle_df["lifecycle_profile"] == FULL_CYCLE_LABEL, "Unique_ID"]
+)
+if lifecycle_choice == "Full-cycle only":
+    pool = master[master["Unique_ID"].isin(full_ids)]
+elif lifecycle_choice == "Non-full-cycle only":
+    pool = master[~master["Unique_ID"].isin(full_ids)]
+else:
+    pool = master
+
+# Default the selector to the largest company (by latest market cap) in view.
+mcap_by_id = latest.set_index("Unique_ID")["Market_Cap_USD_M"]
+pool = pool.assign(_mcap=pool["Unique_ID"].map(mcap_by_id))
+company_names = sorted(pool["Company Name"].dropna().tolist())
+flagship = pool.sort_values("_mcap", ascending=False)["Company Name"].iloc[0]
+default_index = company_names.index(flagship)
+
+selected_name = st.sidebar.selectbox(
+    "Select company", company_names, index=default_index
+)
+st.sidebar.caption(f"{len(company_names)} of {len(master)} companies shown")
 
 company_row = master[master["Company Name"] == selected_name].iloc[0]
 uid = company_row["Unique_ID"]
+company_fin = financials[financials["Unique_ID"] == uid].copy()
 
 latest_row = latest[latest["Unique_ID"] == uid]
 lr = latest_row.iloc[0] if not latest_row.empty else None
@@ -79,105 +122,113 @@ period_label = (
     f"{lr['Period_Type']} {int(lr['Calendar_Year'])}" if lr is not None else "—"
 )
 
-# ── Module 2: Header ────────────────────────────────────────────────
+# ── Sector Overview (reflects the lifecycle filter) ─────────────────
+pool_ids = set(pool["Unique_ID"])
+combined_mcap = latest.loc[
+    latest["Unique_ID"].isin(pool_ids), "Market_Cap_USD_M"
+].sum()
+
+# Most recent quarter present anywhere in the data (like-for-like revenue sum).
+q_rows = financials[financials["Period_Type"].isin(QUARTERS)].copy()
+q_rows["_q"] = q_rows["Period_Type"].map({"Q1": 1, "Q2": 2, "Q3": 3, "Q4": 4})
+q_rows = q_rows.sort_values(["Calendar_Year", "_q"])
+latest_year = int(q_rows["Calendar_Year"].iloc[-1])
+latest_q = q_rows.loc[q_rows["Calendar_Year"] == latest_year, "Period_Type"].iloc[-1]
+
+period_rows = financials[
+    (financials["Period_Type"] == latest_q)
+    & (financials["Calendar_Year"] == latest_year)
+    & (financials["Unique_ID"].isin(pool_ids))
+]
+combined_rev = period_rows["Q_Revenue"].sum()
+n_reporting = int(period_rows["Q_Revenue"].notna().sum())
+
+with st.container(border=True):
+    st.subheader("Sector Overview")
+    s1, s2, s3 = st.columns(3)
+    s1.metric("Companies in view", str(len(pool_ids)))
+    s2.metric("Combined Market Cap", fmt_money(combined_mcap))
+    s3.metric(f"Combined Revenue · {latest_q} {latest_year}", fmt_money(combined_rev))
+    st.caption(
+        "Totals reflect the lifecycle filter. Market cap is summed at each "
+        "company's latest reported date (approximate). Revenue is the combined "
+        f"{latest_q} {latest_year} figure from {n_reporting} of {len(pool_ids)} "
+        "companies that reported that period."
+    )
+
+# ── Header ──────────────────────────────────────────────────────────
 with st.container(border=True):
     st.markdown(f"### {selected_name}")
     st.markdown(
-        f"**Ticker:** {company_row['Ticker']} &nbsp;·&nbsp; "
-        f"**Exchange:** {company_row['Exchange']} &nbsp;·&nbsp; "
-        f"**Market Segment:** {company_row['Market Segment']} &nbsp;·&nbsp; "
-        f"**Latest Period:** {period_label}"
+        f"**Ticker:** {field(company_row.get('Ticker'))} &nbsp;·&nbsp; "
+        f"**Exchange:** {field(company_row.get('Exchange'))} &nbsp;·&nbsp; "
+        f"**Market Segment:** {field(company_row.get('Market Segment'))} "
+        f"&nbsp;·&nbsp; **Latest Period:** {period_label}"
     )
 
-# ── Module 3: Lifecycle Footprint ───────────────────────────────────
+# ── Lifecycle Footprint ─────────────────────────────────────────────
 with st.container(border=True):
     st.subheader("Lifecycle Footprint")
     lc_row = lifecycle_df[lifecycle_df["Unique_ID"] == uid].iloc[0]
-    render_lifecycle_strip(lc_row, lifecycle_df, master)
+    render_lifecycle_strip(lc_row)
 
-# ── Module 4: Financial Snapshot ────────────────────────────────────
+# ── Financial Snapshot ──────────────────────────────────────────────
 with st.container(border=True):
     st.subheader("Financial Snapshot")
+    st.markdown(
+        '<span style="background:rgba(0,180,216,0.16); border:1px solid #00B4D8; '
+        'border-radius:6px; padding:3px 10px; font-size:13px; color:#E6E9EF;">'
+        f"Latest reported period &nbsp;<b>{period_label}</b></span>",
+        unsafe_allow_html=True,
+    )
+    st.write("")
     if lr is not None:
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Revenue", fmt_money(lr["Q_Revenue"]), help=f"Period: {period_label}")
-        c2.metric("R&D", fmt_money(lr["Q_RD"]), help=f"Period: {period_label}")
-        c3.metric("SG&A", fmt_money(lr["Q_SGA"]), help=f"Period: {period_label}")
-        c4.metric("Cash", fmt_money(lr["Q_Cash"]), help=f"Period: {period_label}")
+        c1.metric("Revenue", fmt_money(lr["Q_Revenue"]))
+        c2.metric("R&D", fmt_money(lr["Q_RD"]))
+        c3.metric("SG&A", fmt_money(lr["Q_SGA"]))
+        c4.metric("Cash", fmt_money(lr["Q_Cash"]))
 
         c5, c6, c7 = st.columns(3)
-        c5.metric("Market Cap", fmt_money(lr["Market_Cap_USD_M"]),
-                  help=f"Period: {period_label}")
+        c5.metric("Market Cap", fmt_money(lr["Market_Cap_USD_M"]))
         c6.metric("R&D Intensity", fmt_multiple(lr["rd_intensity"]),
                   help="R&D \u00f7 Revenue")
         c7.metric("Cash / Market Cap", fmt_pct(lr["cash_to_mktcap"]),
                   help="Cash \u00f7 Market Cap")
 
         st.caption(
-            f"All figures for **{period_label}**, USD. "
-            "Cash and Market Cap are point-in-time snapshots."
+            "All figures in USD. Cash and Market Cap are point-in-time snapshots."
         )
     else:
         st.info("No financial data available for this company.")
 
-# ── Module 5: Reporting Timeline ────────────────────────────────────
-company_fin = financials[financials["Unique_ID"] == uid].copy()
+# ── Financial Trend ─────────────────────────────────────────────────
 with st.container(border=True):
-    st.subheader("Reporting Timeline (2024–2026)")
+    st.subheader("Financial Trend")
+    metric_label = st.selectbox("Metric", list(METRICS.keys()), index=0)
     if not company_fin.empty:
-        render_reporting_timeline(company_fin)
+        render_financial_trend(company_fin, metric_label, METRICS[metric_label])
     else:
         st.info("No reporting data available.")
 
-# ── Module 6: Data Quality ──────────────────────────────────────────
+# ── Data Sources ────────────────────────────────────────────────────
 with st.container(border=True):
-    st.subheader("Data Quality")
-    if not company_fin.empty:
-        flags_found = False
+    st.subheader("Data Sources")
+    fin_sources = sorted(
+        str(s) for s in company_fin["Source"].dropna().unique() if str(s).strip()
+    )
+    st.markdown(f"**Company profile source:** {field(company_row.get('Data Source'))}")
+    st.markdown(
+        "**Financial data sources:** "
+        + (", ".join(fin_sources) if fin_sources else "—")
+    )
+    st.markdown(
+        f"**Reporting standard:** {field(company_row.get('Reporting_Standard'))}"
+    )
+    st.markdown(f"**Reporting currency:** {field(company_row.get('Currency'))}")
 
-        manual_rows = company_fin[
-            company_fin["Manual_Review_Required"].astype(str)
-            .str.strip().str.lower() == "yes"
-        ]
-        if not manual_rows.empty:
-            flags_found = True
-            st.markdown("**Periods requiring manual review:**")
-            for _, r in manual_rows.iterrows():
-                date = (
-                    r["Quarter_End_Date"].strftime("%d/%m/%Y")
-                    if pd.notna(r["Quarter_End_Date"]) else "—"
-                )
-                st.markdown(
-                    f"- {r['Period_Type']} {int(r['Calendar_Year'])} ({date})"
-                )
-
-        derived_count = (
-            company_fin["Derived_Row_Flag"].astype(str)
-            .str.strip().str.upper() == "TRUE"
-        ).sum()
-        if derived_count > 0:
-            flags_found = True
-            st.markdown(f"**Derived rows:** {derived_count}")
-
-        missing = [
-            m for m in company_fin["Missing_Periods"].dropna().unique()
-            if str(m).strip()
-        ]
-        if missing:
-            flags_found = True
-            st.markdown(f"**Missing periods:** {', '.join(str(m) for m in missing)}")
-
-        notes = [
-            n for n in company_fin["Reviewer_Notes"].dropna().unique()
-            if str(n).strip()
-        ]
-        if notes:
-            flags_found = True
-            with st.expander("Reviewer Notes"):
-                for note in notes:
-                    st.markdown(f"- {note}")
-
-        if not flags_found:
-            st.success("No data-quality flags.")
-    else:
-        st.info("No financial data available.")
+    manual_used = (
+        company_fin["Manual_Data_Source"].astype(str).str.strip().str.lower() == "yes"
+    ).any()
+    if manual_used:
+        st.caption("Some periods include manually extracted (IR / PDF) data.")

@@ -1,23 +1,27 @@
 # Biopharma Command Center
 
 A single-page Streamlit dashboard that turns two biopharma datasets into an
-interactive company intelligence map. Select any of 50 companies and see its
-drug-development lifecycle footprint, latest financial snapshot, reporting
-timeline, and data-quality flags.
+interactive company intelligence map. It opens on a sector-wide overview, then
+lets you drill into any of 50 companies — lifecycle footprint, latest financial
+snapshot, financial trend, and data provenance.
 
 This is **MVP-1**. The relationship/network map and the strategic posture
 quadrant are planned later passes and are intentionally not built yet.
 
 ## Features
 
+- **Lifecycle filter** (sidebar) — show All companies, Full-cycle only, or
+  Non-full-cycle only. Defaults to All.
+- **Sector Overview** — companies in view, combined market cap, and combined
+  latest-quarter revenue. Updates with the lifecycle filter.
 - **Lifecycle Footprint** — the 5-stage pipeline (Discovery → Preclinical →
-  Clinical Trials → FDA Review → Commercial), with per-stage peer counts.
+  Clinical Trials → FDA Review → Commercial) as a connected chip strip.
 - **Financial Snapshot** — latest Revenue, R&D, SG&A, Cash, Market Cap, plus
-  R&D intensity and Cash / Market Cap, each labelled with its reporting period.
-- **Reporting Timeline** — every reported period from 2024–2026, coloured by
-  data status (Complete / Derived / Partial) with manual-review markers.
-- **Data Quality** — manual-review periods, derived-row count, missing periods,
-  and reviewer notes for the selected company.
+  R&D intensity and Cash / Market Cap, with the reporting period shown clearly.
+- **Financial Trend** — pick a metric; the chart plots it over time with each
+  reporting cadence (quarterly vs FY) drawn as its own line.
+- **Data Sources** — profile source, financial data sources, reporting
+  standard, and currency for the selected company.
 
 The app reads two committed CSV files only. It makes **no external API calls**.
 
@@ -27,7 +31,7 @@ The app reads two committed CSV files only. It makes **no external API calls**.
 .
 ├── app.py                  # page layout + module calls
 ├── data.py                 # CSV loading + derived tables (all cached)
-├── charts.py               # lifecycle strip + reporting timeline
+├── charts.py               # lifecycle strip + financial trend chart
 ├── requirements.txt        # pinned dependencies
 ├── .gitignore
 ├── .streamlit/
