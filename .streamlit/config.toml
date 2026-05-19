@@ -1,0 +1,17 @@
+# Place this file at:  .streamlit/config.toml  (in the repo root)
+# Dark "command center" theme. Cyan is the UI accent; green/blue/amber are left
+# free for the timeline's data-status semantics (Complete / Derived / Partial).
+
+[theme]
+base = "dark"
+primaryColor = "#00B4D8"            # accent: selected controls, links, highlights
+backgroundColor = "#0E1117"         # page background (near-black)
+secondaryBackgroundColor = "#1A1F2B" # cards, sidebar, metric panels
+textColor = "#E6E9EF"
+font = "sans serif"
+
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false
