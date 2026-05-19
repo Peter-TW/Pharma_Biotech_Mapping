@@ -76,3 +76,36 @@ def get_lifecycle(master: pd.DataFrame) -> pd.DataFrame:
         else ", ".join(stages) if stages else "None"
     )
     return lc
+
+
+@st.cache_data
+def get_positioning(master: pd.DataFrame, latest: pd.DataFrame) -> pd.DataFrame:
+    """Derive positioning labels per company based on lifecycle and latest financials."""
+    df = master[["Unique_ID", "Commercial"]].merge(
+        latest[["Unique_ID", "rd_intensity", "Market_Cap_USD_M"]],
+        on="Unique_ID",
+        how="left"
+    )
+
+    def compute_pos(row):
+        comm = row["Commercial"]
+        mcap = row["Market_Cap_USD_M"]
+        rdi = row["rd_intensity"]
+        
+        if not comm:
+            return "Pipeline-stage challenger"
+        
+        if pd.notna(mcap) and mcap >= 100000:
+            return "Full-cycle leader"
+        
+        if pd.notna(rdi):
+            if rdi >= 0.30:
+                return "R&D-driven commercial"
+            else:
+                return "Commercial-led"
+        else:
+            return "Commercial-led"
+
+    df["positioning"] = df.apply(compute_pos, axis=1)
+    return df[["Unique_ID", "positioning"]]
+

@@ -6,8 +6,8 @@ Single-page Streamlit dashboard.
 import pandas as pd
 import streamlit as st
 
-from data import load_master, load_financials, get_latest_financials, get_lifecycle
-from charts import render_lifecycle_strip, render_financial_trend
+from data import load_master, load_financials, get_latest_financials, get_lifecycle, get_positioning
+from charts import render_lifecycle_strip, render_financial_trend, render_intelligence_map
 
 st.set_page_config(
     page_title="Biopharma Command Center",
@@ -38,6 +38,7 @@ master = load_master()
 financials = load_financials()
 latest = get_latest_financials(financials)
 lifecycle_df = get_lifecycle(master)
+positioning_df = get_positioning(master, latest)
 
 FULL_CYCLE_LABEL = "Full-cycle (all 5 stages)"
 QUARTERS = ["Q1", "Q2", "Q3", "Q4"]
@@ -128,16 +129,24 @@ combined_mcap = latest.loc[
     latest["Unique_ID"].isin(pool_ids), "Market_Cap_USD_M"
 ].sum()
 
-# Most recent quarter present anywhere in the data (like-for-like revenue sum).
-q_rows = financials[financials["Period_Type"].isin(QUARTERS)].copy()
+# Reference quarter = the most recent quarter with BROAD coverage (most
+# companies reporting), not the leading edge where only 1-2 firms have filed.
+q_rows = financials[
+    financials["Period_Type"].isin(QUARTERS) & financials["Q_Revenue"].notna()
+].copy()
 q_rows["_q"] = q_rows["Period_Type"].map({"Q1": 1, "Q2": 2, "Q3": 3, "Q4": 4})
-q_rows = q_rows.sort_values(["Calendar_Year", "_q"])
-latest_year = int(q_rows["Calendar_Year"].iloc[-1])
-latest_q = q_rows.loc[q_rows["Calendar_Year"] == latest_year, "Period_Type"].iloc[-1]
+coverage = (
+    q_rows.groupby(["Calendar_Year", "_q", "Period_Type"])["Unique_ID"]
+    .nunique()
+    .reset_index(name="n")
+    .sort_values(["n", "Calendar_Year", "_q"], ascending=[False, False, False])
+)
+ref_year = int(coverage.iloc[0]["Calendar_Year"])
+ref_q = coverage.iloc[0]["Period_Type"]
 
 period_rows = financials[
-    (financials["Period_Type"] == latest_q)
-    & (financials["Calendar_Year"] == latest_year)
+    (financials["Period_Type"] == ref_q)
+    & (financials["Calendar_Year"] == ref_year)
     & (financials["Unique_ID"].isin(pool_ids))
 ]
 combined_rev = period_rows["Q_Revenue"].sum()
@@ -148,13 +157,29 @@ with st.container(border=True):
     s1, s2, s3 = st.columns(3)
     s1.metric("Companies in view", str(len(pool_ids)))
     s2.metric("Combined Market Cap", fmt_money(combined_mcap))
-    s3.metric(f"Combined Revenue · {latest_q} {latest_year}", fmt_money(combined_rev))
+    s3.metric(f"Combined Revenue · {ref_q} {ref_year}", fmt_money(combined_rev))
     st.caption(
         "Totals reflect the lifecycle filter. Market cap is summed at each "
         "company's latest reported date (approximate). Revenue is the combined "
-        f"{latest_q} {latest_year} figure from {n_reporting} of {len(pool_ids)} "
-        "companies that reported that period."
+        f"{ref_q} {ref_year} figure — the most recent quarter with broad "
+        f"coverage — from {n_reporting} of {len(pool_ids)} companies that "
+        "reported that period."
     )
+
+# ── Intelligence Map ────────────────────────────────────────────────
+with st.container(border=True):
+    st.subheader("Intelligence Map")
+    plot_df = pool[["Unique_ID", "Company Name", "Commercial"]].merge(
+        latest[["Unique_ID", "Q_Revenue", "rd_intensity", "Market_Cap_USD_M"]],
+        on="Unique_ID",
+        how="left"
+    ).merge(
+        positioning_df[["Unique_ID", "positioning"]],
+        on="Unique_ID",
+        how="left"
+    )
+    plot_df = plot_df.rename(columns={"Commercial": "is_commercial"})
+    render_intelligence_map(plot_df, uid)
 
 # ── Header ──────────────────────────────────────────────────────────
 with st.container(border=True):
@@ -164,6 +189,13 @@ with st.container(border=True):
         f"**Exchange:** {field(company_row.get('Exchange'))} &nbsp;·&nbsp; "
         f"**Market Segment:** {field(company_row.get('Market Segment'))} "
         f"&nbsp;·&nbsp; **Latest Period:** {period_label}"
+    )
+    sel_pos = positioning_df.loc[positioning_df["Unique_ID"] == uid, "positioning"].iloc[0]
+    st.markdown(
+        '<span style="background:rgba(0,180,216,0.16); border:1px solid #00B4D8; '
+        'border-radius:6px; padding:3px 10px; font-size:13px; color:#E6E9EF;">'
+        f"Positioning &nbsp;<b>{sel_pos}</b></span>",
+        unsafe_allow_html=True,
     )
 
 # ── Lifecycle Footprint ─────────────────────────────────────────────
@@ -226,6 +258,12 @@ with st.container(border=True):
         f"**Reporting standard:** {field(company_row.get('Reporting_Standard'))}"
     )
     st.markdown(f"**Reporting currency:** {field(company_row.get('Currency'))}")
+    n_complete = (company_fin["Row_Data_Status"].astype(str).str.strip().str.lower() == "complete").sum()
+    n_derived = (company_fin["Row_Data_Status"].astype(str).str.strip().str.lower() == "derived").sum()
+    n_manual = (company_fin["Manual_Review_Required"].astype(str).str.strip().str.lower() == "yes").sum()
+    st.markdown(
+        f"**Row status:** {n_complete} complete · {n_derived} derived · {n_manual} manual-review"
+    )
 
     manual_used = (
         company_fin["Manual_Data_Source"].astype(str).str.strip().str.lower() == "yes"

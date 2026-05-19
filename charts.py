@@ -2,6 +2,7 @@
 charts.py — Lifecycle pipeline strip and financial trend chart.
 """
 
+import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -131,3 +132,143 @@ def render_financial_trend(company_fin, metric_label, metric_col):
             "Each line is one reporting cadence — a full-year figure is never "
             "plotted level with a single quarter."
         )
+
+
+def render_intelligence_map(plot_df, selected_uid):
+    """Render Plotly scatter plot for all companies in view."""
+    # Drop rows where Q_Revenue or rd_intensity is NaN, and Q_Revenue <= 0 for log scale.
+    df = plot_df[plot_df["Q_Revenue"].notna() & plot_df["rd_intensity"].notna()].copy()
+    df = df[df["Q_Revenue"] > 0]
+    
+    if len(df) < 3:
+        st.info("Not enough data to plot the map.")
+        return
+        
+    def _fmt_money(val):
+        if pd.isna(val):
+            return "—"
+        a = abs(val)
+        if a >= 1_000_000:
+            return f"${val / 1_000_000:,.2f}T"
+        if a >= 1000:
+            return f"${val / 1000:,.1f}B"
+        return f"${val:,.0f}M"
+
+    def _fmt_pct(val):
+        if pd.isna(val):
+            return "—"
+        return f"{val:.1%}"
+
+    # Calculate bubble size. Bubble size = Market_Cap_USD_M.
+    # Clip Market Cap to positive values for bubble scaling.
+    sizes = df["Market_Cap_USD_M"].fillna(0).clip(lower=0)
+    
+    max_mcap = sizes.max()
+    if pd.isna(max_mcap) or max_mcap <= 0:
+        max_mcap = 1.0
+    sizeref = 2.0 * max_mcap / (50 ** 2)  # max bubble size 50px
+    
+    fig = go.Figure()
+    
+    # Trace groups by is_commercial
+    groups = [
+        (True, "Commercial-stage", "#00B4D8"),
+        (False, "Pipeline-stage", "#FF758F")
+    ]
+    
+    for is_comm, label, color in groups:
+        sub = df[df["is_commercial"] == is_comm]
+        if sub.empty:
+            continue
+            
+        sub_sizes = sub["Market_Cap_USD_M"].fillna(0).clip(lower=0)
+        custom_data = list(zip(
+            sub["Company Name"],
+            sub["positioning"],
+            sub["Q_Revenue"].apply(_fmt_money),
+            sub["rd_intensity"].apply(_fmt_pct),
+            sub["Market_Cap_USD_M"].apply(_fmt_money)
+        ))
+        
+        fig.add_trace(
+            go.Scatter(
+                x=sub["Q_Revenue"],
+                y=sub["rd_intensity"],
+                mode="markers",
+                name=label,
+                marker=dict(
+                    size=sub_sizes,
+                    sizemode="area",
+                    sizeref=sizeref,
+                    sizemin=4,
+                    color=color,
+                    line=dict(width=1, color="rgba(255,255,255,0.3)"),
+                ),
+                customdata=custom_data,
+                hovertemplate=(
+                    "<b>%{customdata[0]}</b><br>"
+                    "Positioning: %{customdata[1]}<br>"
+                    "Revenue: %{customdata[2]}<br>"
+                    "R&D Intensity: %{customdata[3]}<br>"
+                    "Market Cap: %{customdata[4]}<extra></extra>"
+                )
+            )
+        )
+        
+    # Overlay distinct marker for the selected company if it exists in the plot
+    if selected_uid:
+        sel_row = df[df["Unique_ID"] == selected_uid]
+        if not sel_row.empty:
+            row = sel_row.iloc[0]
+            sel_size = pd.Series([row["Market_Cap_USD_M"]]).fillna(0).clip(lower=0).iloc[0]
+            fig.add_trace(
+                go.Scatter(
+                    x=[row["Q_Revenue"]],
+                    y=[row["rd_intensity"]],
+                    mode="markers",
+                    name="Selected",
+                    marker=dict(
+                        size=[sel_size],
+                        sizemode="area",
+                        sizeref=sizeref,
+                        sizemin=4,
+                        color="rgba(0,0,0,0)",  # transparent fill
+                        line=dict(width=3, color="#FFFFFF"),  # thick white border
+                    ),
+                    showlegend=False,
+                    hoverinfo="skip"
+                )
+            )
+            
+    fig.update_layout(
+        height=400,
+        margin=dict(l=10, r=10, t=30, b=10),
+        xaxis=dict(
+            title="Quarterly Revenue (USD M, Log Scale)",
+            type="log",
+            showgrid=True,
+            gridcolor="#2A2E3A",
+            zeroline=False,
+        ),
+        yaxis=dict(
+            title="R&D Intensity",
+            tickformat=".0%",
+            showgrid=True,
+            gridcolor="#2A2E3A",
+            zeroline=False,
+        ),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="center",
+            x=0.5,
+            font=dict(size=11, color="#E6E9EF"),
+        ),
+        hovermode="closest",
+    )
+    
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
