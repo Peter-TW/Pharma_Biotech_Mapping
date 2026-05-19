@@ -182,14 +182,16 @@ def render_intelligence_map(plot_df, selected_uid):
     df["plotted_rd_intensity"] = df["rd_intensity"].clip(upper=1.0)
     df["marker_symbol"] = df["rd_intensity"].apply(lambda v: "triangle-up" if v > 1.0 else "circle")
 
-    # Calculate bubble size based on np.log10(Market_Cap) (Fix 3)
-    mcap_vals = df["Market_Cap_USD_M"].fillna(0).clip(lower=1.0)
+    # Calculate bubble size based on np.log10(Market_Cap)
+    mcap_vals = df["Market_Cap_USD_M"].fillna(1.0).clip(lower=1.0)
     df["log_mcap"] = np.log10(mcap_vals)
     
-    max_log_mcap = df["log_mcap"].max()
-    if pd.isna(max_log_mcap) or max_log_mcap <= 0:
-        max_log_mcap = 1.0
-    sizeref = 2.0 * max_log_mcap / (35 ** 2)  # max bubble size 35px in area scaling
+    min_log = df["log_mcap"].min()
+    max_log = df["log_mcap"].max()
+    if pd.isna(min_log) or pd.isna(max_log) or min_log == max_log:
+        df["bubble_size"] = 22.0
+    else:
+        df["bubble_size"] = 9.0 + (df["log_mcap"] - min_log) / (max_log - min_log) * (40.0 - 9.0)
     
     fig = go.Figure()
     
@@ -204,7 +206,7 @@ def render_intelligence_map(plot_df, selected_uid):
         if sub.empty:
             continue
             
-        sub_sizes = sub["log_mcap"]
+        sub_sizes = sub["bubble_size"]
         sub_symbols = sub["marker_symbol"]
         custom_data = list(zip(
             sub["Company Name"],
@@ -222,9 +224,7 @@ def render_intelligence_map(plot_df, selected_uid):
                 name=label,
                 marker=dict(
                     size=sub_sizes,
-                    sizemode="area",
-                    sizeref=sizeref,
-                    sizemin=10,
+                    sizemode="diameter",
                     color=color,
                     symbol=sub_symbols,
                     line=dict(width=1, color="rgba(255,255,255,0.3)"),
@@ -245,7 +245,7 @@ def render_intelligence_map(plot_df, selected_uid):
         sel_row = df[df["Unique_ID"] == selected_uid]
         if not sel_row.empty:
             row = sel_row.iloc[0]
-            sel_size = np.log10(max(row["Market_Cap_USD_M"], 1.0))
+            sel_size = row["bubble_size"]
             sel_symbol = "triangle-up" if row["rd_intensity"] > 1.0 else "circle"
             fig.add_trace(
                 go.Scatter(
@@ -255,9 +255,7 @@ def render_intelligence_map(plot_df, selected_uid):
                     name="Selected",
                     marker=dict(
                         size=[sel_size],
-                        sizemode="area",
-                        sizeref=sizeref,
-                        sizemin=10,
+                        sizemode="diameter",
                         color="rgba(0,0,0,0)",  # transparent fill
                         symbol=sel_symbol,
                         line=dict(width=3, color="#FFFFFF"),  # thick white border

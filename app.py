@@ -117,17 +117,44 @@ else:
 # Default the selector to the largest company (by latest market cap) in view.
 mcap_by_id = latest.set_index("Unique_ID")["Market_Cap_USD_M"]
 pool = pool.assign(_mcap=pool["Unique_ID"].map(mcap_by_id))
-company_names = sorted(pool["Company Name"].dropna().tolist())
-flagship = pool.sort_values("_mcap", ascending=False)["Company Name"].iloc[0]
-default_index = company_names.index(flagship)
 
-selected_name = st.sidebar.selectbox(
-    "Select company", company_names, index=default_index
+pool_clean = pool[pool["Company Name"].notna()].copy()
+pool_clean = pool_clean.sort_values("Company Name")
+
+labels = []
+label_to_uid = {}
+uid_to_name = {}
+
+for _, row in pool_clean.iterrows():
+    name = row["Company Name"]
+    ticker = row.get("Ticker")
+    if pd.isna(ticker) or str(ticker).strip() == "" or str(ticker).lower() == "nan":
+        lbl = name
+    else:
+        lbl = f"{name} ({str(ticker).strip()})"
+    labels.append(lbl)
+    label_to_uid[lbl] = row["Unique_ID"]
+    uid_to_name[row["Unique_ID"]] = name
+
+flagship_row = pool_clean.sort_values("_mcap", ascending=False).iloc[0]
+flagship_name = flagship_row["Company Name"]
+flagship_ticker = flagship_row.get("Ticker")
+if pd.isna(flagship_ticker) or str(flagship_ticker).strip() == "" or str(flagship_ticker).lower() == "nan":
+    flagship_label = flagship_name
+else:
+    flagship_label = f"{flagship_name} ({str(flagship_ticker).strip()})"
+
+default_index = labels.index(flagship_label)
+
+selected_label = st.sidebar.selectbox(
+    "Select company", labels, index=default_index
 )
-st.sidebar.caption(f"{len(company_names)} of {len(master)} companies shown")
+st.sidebar.caption(f"{len(labels)} of {len(master)} companies shown")
 
-company_row = master[master["Company Name"] == selected_name].iloc[0]
-uid = company_row["Unique_ID"]
+uid = label_to_uid[selected_label]
+selected_name = uid_to_name[uid]
+
+company_row = master[master["Unique_ID"] == uid].iloc[0]
 company_fin = financials[financials["Unique_ID"] == uid].copy()
 
 latest_row = latest[latest["Unique_ID"] == uid]
