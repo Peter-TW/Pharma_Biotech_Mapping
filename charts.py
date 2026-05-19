@@ -3,6 +3,7 @@ charts.py — Lifecycle pipeline strip and financial trend chart.
 """
 
 import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -138,7 +139,17 @@ def render_intelligence_map(plot_df, selected_uid):
     """Render Plotly scatter plot for all companies in view."""
     # Drop rows where Q_Revenue or rd_intensity is NaN, and Q_Revenue <= 0 for log scale.
     df = plot_df[plot_df["Q_Revenue"].notna() & plot_df["rd_intensity"].notna()].copy()
-    df = df[df["Q_Revenue"] > 0]
+    
+    # Consistent X-axis positioning for FY reporters (Fix 2)
+    if "Period_Type" in df.columns:
+        df["plotted_revenue"] = df.apply(
+            lambda r: r["Q_Revenue"] / 4.0 if r["Period_Type"] == "FY" else r["Q_Revenue"],
+            axis=1
+        )
+    else:
+        df["plotted_revenue"] = df["Q_Revenue"]
+        
+    df = df[df["plotted_revenue"] > 0]
     
     if len(df) < 3:
         st.info("Not enough data to plot the map.")
@@ -159,14 +170,26 @@ def render_intelligence_map(plot_df, selected_uid):
             return "—"
         return f"{val:.1%}"
 
-    # Calculate bubble size. Bubble size = Market_Cap_USD_M.
-    # Clip Market Cap to positive values for bubble scaling.
-    sizes = df["Market_Cap_USD_M"].fillna(0).clip(lower=0)
+    # Hover-specific percentage formatter for R&D intensity (Fix 1)
+    def _fmt_pct_hover(val):
+        if pd.isna(val):
+            return "—"
+        if val > 1.0:
+            return f"{val:.1%} (off-scale)"
+        return f"{val:.1%}"
+
+    # Y-axis outlier clamping (Fix 1)
+    df["plotted_rd_intensity"] = df["rd_intensity"].clip(upper=1.0)
+    df["marker_symbol"] = df["rd_intensity"].apply(lambda v: "triangle-up" if v > 1.0 else "circle")
+
+    # Calculate bubble size based on np.log10(Market_Cap) (Fix 3)
+    mcap_vals = df["Market_Cap_USD_M"].fillna(0).clip(lower=1.0)
+    df["log_mcap"] = np.log10(mcap_vals)
     
-    max_mcap = sizes.max()
-    if pd.isna(max_mcap) or max_mcap <= 0:
-        max_mcap = 1.0
-    sizeref = 2.0 * max_mcap / (50 ** 2)  # max bubble size 50px
+    max_log_mcap = df["log_mcap"].max()
+    if pd.isna(max_log_mcap) or max_log_mcap <= 0:
+        max_log_mcap = 1.0
+    sizeref = 2.0 * max_log_mcap / (35 ** 2)  # max bubble size 35px in area scaling
     
     fig = go.Figure()
     
@@ -181,27 +204,29 @@ def render_intelligence_map(plot_df, selected_uid):
         if sub.empty:
             continue
             
-        sub_sizes = sub["Market_Cap_USD_M"].fillna(0).clip(lower=0)
+        sub_sizes = sub["log_mcap"]
+        sub_symbols = sub["marker_symbol"]
         custom_data = list(zip(
             sub["Company Name"],
             sub["positioning"],
             sub["Q_Revenue"].apply(_fmt_money),
-            sub["rd_intensity"].apply(_fmt_pct),
+            sub["rd_intensity"].apply(_fmt_pct_hover),
             sub["Market_Cap_USD_M"].apply(_fmt_money)
         ))
         
         fig.add_trace(
             go.Scatter(
-                x=sub["Q_Revenue"],
-                y=sub["rd_intensity"],
+                x=sub["plotted_revenue"],
+                y=sub["plotted_rd_intensity"],
                 mode="markers",
                 name=label,
                 marker=dict(
                     size=sub_sizes,
                     sizemode="area",
                     sizeref=sizeref,
-                    sizemin=4,
+                    sizemin=10,
                     color=color,
+                    symbol=sub_symbols,
                     line=dict(width=1, color="rgba(255,255,255,0.3)"),
                 ),
                 customdata=custom_data,
@@ -220,19 +245,21 @@ def render_intelligence_map(plot_df, selected_uid):
         sel_row = df[df["Unique_ID"] == selected_uid]
         if not sel_row.empty:
             row = sel_row.iloc[0]
-            sel_size = pd.Series([row["Market_Cap_USD_M"]]).fillna(0).clip(lower=0).iloc[0]
+            sel_size = np.log10(max(row["Market_Cap_USD_M"], 1.0))
+            sel_symbol = "triangle-up" if row["rd_intensity"] > 1.0 else "circle"
             fig.add_trace(
                 go.Scatter(
-                    x=[row["Q_Revenue"]],
-                    y=[row["rd_intensity"]],
+                    x=[row["plotted_revenue"]],
+                    y=[row["plotted_rd_intensity"]],
                     mode="markers",
                     name="Selected",
                     marker=dict(
                         size=[sel_size],
                         sizemode="area",
                         sizeref=sizeref,
-                        sizemin=4,
+                        sizemin=10,
                         color="rgba(0,0,0,0)",  # transparent fill
+                        symbol=sel_symbol,
                         line=dict(width=3, color="#FFFFFF"),  # thick white border
                     ),
                     showlegend=False,
@@ -244,7 +271,7 @@ def render_intelligence_map(plot_df, selected_uid):
         height=400,
         margin=dict(l=10, r=10, t=30, b=10),
         xaxis=dict(
-            title="Quarterly Revenue (USD M, Log Scale)",
+            title="Revenue per quarter (USD M, log scale; FY reporters annualised ÷4)",
             type="log",
             showgrid=True,
             gridcolor="#2A2E3A",
@@ -256,6 +283,7 @@ def render_intelligence_map(plot_df, selected_uid):
             showgrid=True,
             gridcolor="#2A2E3A",
             zeroline=False,
+            range=[-0.05, 1.0],
         ),
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
@@ -271,4 +299,8 @@ def render_intelligence_map(plot_df, selected_uid):
     )
     
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.caption(
+        "Bubble size: log-scaled market cap. Companies above 100% R&D intensity "
+        "are shown clamped at the top edge (100%)."
+    )
 

@@ -183,7 +183,7 @@ with st.container(border=True):
 with st.container(border=True):
     st.subheader("Intelligence Map")
     plot_df = pool[["Unique_ID", "Company Name", "Commercial"]].merge(
-        latest[["Unique_ID", "Q_Revenue", "rd_intensity", "Market_Cap_USD_M"]],
+        latest[["Unique_ID", "Q_Revenue", "rd_intensity", "Market_Cap_USD_M", "Period_Type"]],
         on="Unique_ID",
         how="left"
     ).merge(
@@ -204,10 +204,27 @@ with st.container(border=True):
         f"&nbsp;·&nbsp; **Latest Period:** {period_label}"
     )
     sel_pos = positioning_df.loc[positioning_df["Unique_ID"] == uid, "positioning"].iloc[0]
+    
+    # Calculate freshness badge
+    if lr is not None and pd.notna(lr.get("Calendar_Year")):
+        year = int(lr["Calendar_Year"])
+        if year >= 2026:
+            freshness = "Current"
+        elif year == 2025:
+            freshness = "Lagging"
+        else:
+            freshness = "Stale"
+    else:
+        freshness = "Stale"
+
     st.markdown(
-        '<span style="background:rgba(0,180,216,0.16); border:1px solid #00B4D8; '
-        'border-radius:6px; padding:3px 10px; font-size:13px; color:#E6E9EF;">'
-        f"Positioning &nbsp;<b>{sel_pos}</b></span>",
+        f'<span style="background:rgba(0,180,216,0.16); border:1px solid #00B4D8; '
+        f'border-radius:6px; padding:3px 10px; font-size:13px; color:#E6E9EF;">'
+        f'Positioning &nbsp;<b>{sel_pos}</b></span>'
+        f'&nbsp;&nbsp;'
+        f'<span style="background:rgba(0,180,216,0.16); border:1px solid #00B4D8; '
+        f'border-radius:6px; padding:3px 10px; font-size:13px; color:#E6E9EF;">'
+        f'Freshness &nbsp;<b>{freshness}</b></span>',
         unsafe_allow_html=True,
     )
 
