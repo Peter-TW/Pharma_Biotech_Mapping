@@ -8,6 +8,24 @@ snapshot, financial trend, and data provenance.
 This is **MVP-1**. The relationship/network map and the strategic posture
 quadrant are planned later passes and are intentionally not built yet.
 
+## Data discipline
+
+The dataset behind this dashboard is small but the rules behind it are
+strict. Every value comes from an official company source (annual reports,
+quarterly results PDFs, regulatory filings). Every production change
+follows a four-step pattern — staging, diagnostic, preview, controlled
+rewrite — and every cell change is recorded with both the old and new
+value in a per-pass audit log.
+
+Where a company doesn't disclose a metric (Sun Pharma's SG&A, Otsuka's
+quarterly breakdown), the dashboard shows a blank rather than a proxy.
+Where reporting cadence is genuinely half-yearly (Roche, Haleon, CSL),
+the dashboard labels it rather than fabricating quarters. The principle
+is: honest gaps over confident guesses.
+
+See [`audit/`](audit/) for the full methodology and the audit trail of
+the Japan / India coverage batch.
+
 ## Features
 
 - **Lifecycle filter** (sidebar) — show All companies, Full-cycle only, or
