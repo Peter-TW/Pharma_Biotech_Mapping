@@ -203,10 +203,24 @@ coverage = (
     q_rows.groupby(["Calendar_Year", "_q", "Period_Type"])["Unique_ID"]
     .nunique()
     .reset_index(name="n")
-    .sort_values(["n", "Calendar_Year", "_q"], ascending=[False, False, False])
 )
-ref_year = int(coverage.iloc[0]["Calendar_Year"])
-ref_q = coverage.iloc[0]["Period_Type"]
+# Coverage floor: prefer the most recent quarter where at least 80% of the
+# companies in view have reported. Falls back to broadest-coverage if no
+# quarter clears the floor.
+pool_size = len(pool_ids) if len(pool_ids) > 0 else len(master)
+threshold = max(1, int(0.80 * pool_size))
+qualifying = coverage[coverage["n"] >= threshold].sort_values(
+    ["Calendar_Year", "_q"], ascending=[False, False]
+)
+if not qualifying.empty:
+    ref_year = int(qualifying.iloc[0]["Calendar_Year"])
+    ref_q = qualifying.iloc[0]["Period_Type"]
+else:
+    fallback = coverage.sort_values(
+        ["n", "Calendar_Year", "_q"], ascending=[False, False, False]
+    )
+    ref_year = int(fallback.iloc[0]["Calendar_Year"])
+    ref_q = fallback.iloc[0]["Period_Type"]
 
 period_rows = financials[
     (financials["Period_Type"] == ref_q)
@@ -225,9 +239,9 @@ with st.container(border=True):
     st.caption(
         "Totals reflect the lifecycle filter. Market cap is summed at each "
         "company's latest reported date (approximate). Revenue is the combined "
-        f"{ref_q} {ref_year} figure — the most recent quarter with broad "
-        f"coverage — from {n_reporting} of {len(pool_ids)} companies that "
-        "reported that period."
+        f"{ref_q} {ref_year} figure — the latest quarter "
+        f"with at least 80% of companies reporting — from {n_reporting} of "
+        f"{len(pool_ids)} companies that reported that period."
     )
 
 # ── Intelligence Map ────────────────────────────────────────────────
