@@ -83,11 +83,26 @@ def render_financial_trend(company_fin, metric_label, metric_col):
 
     df = df.sort_values("Quarter_End_Date")
     df["cadence"] = df["Period_Type"].map(CADENCE_GROUP).fillna("Other")
-    df["plabel"] = (
-        df["Period_Type"].astype(str)
-        + " "
-        + df["Calendar_Year"].astype("Int64").astype(str)
-    )
+    # Display reporting periods in the same compact order as Sector Trend
+    # (e.g. 2026 Q1). For fiscal-quarter reporters, append the normalized
+    # Calendar Quarter when it differs from the disclosed Period_Type.
+    df["year_str"] = df["Calendar_Year"].astype("Int64").astype(str)
+    df["reported_label"] = df["year_str"] + " " + df["Period_Type"].astype(str)
+
+    def _period_display(row):
+        reported = row["reported_label"]
+        cal_q = str(row.get("Calendar_Quarter", "")).strip().upper()
+        period_type = str(row.get("Period_Type", "")).strip().upper()
+        quarters = {"Q1", "Q2", "Q3", "Q4"}
+        # Only annotate when both labels refer to a single quarter — FY, H1
+        # and 9M rows must not be equated to a calendar quarter.
+        if (period_type in quarters
+                and cal_q in quarters
+                and period_type != cal_q):
+            return f"{reported} · Calendar Quarter {row['year_str']} {cal_q}"
+        return reported
+
+    df["plabel"] = df.apply(_period_display, axis=1)
 
     fig = go.Figure()
     for cadence, color in CADENCE_COLORS.items():

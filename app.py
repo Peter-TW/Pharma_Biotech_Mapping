@@ -238,9 +238,9 @@ coverage = (
     .nunique()
     .reset_index(name="n")
 )
-# Coverage floor: prefer the most recent calendar quarter where at least 80%
+# Coverage floor: prefer the most recent Calendar Quarter where at least 80%
 # of companies in view reported quarterly revenue. Falls back to the broadest
-# available calendar quarter if no quarter clears the floor.
+# available Calendar Quarter if no quarter clears the floor.
 pool_size = len(pool_ids) if len(pool_ids) > 0 else len(master)
 threshold = max(1, math.ceil(0.80 * pool_size))
 qualifying = coverage[coverage["n"] >= threshold].sort_values(
@@ -308,7 +308,7 @@ trend_label = latest_trend_label if latest_trend_label != "None" else "No quarte
 hidden_clause = " Sparse leading-edge quarters are hidden from sector trends until coverage improves." if has_hidden else ""
 
 freshness_text = (
-    f"Latest broad-coverage quarter: <b>{overview_label}</b>. "
+    f"Latest broad-coverage Calendar Quarter: <b>{overview_label}</b>. "
     f"Latest eligible sector trend point: <b>{trend_label}</b>."
     f"{hidden_clause}"
 )
@@ -323,7 +323,7 @@ st.markdown(
 
 with st.container(border=True):
     st.subheader("Sector Overview")
-    question_prompt("What is the aggregate size and latest broad-coverage revenue base of the selected biopharma universe?")
+    question_prompt("What is the aggregate size and latest broad-coverage Calendar Quarter revenue base of the selected biopharma universe?")
     s1, s2, s3 = st.columns(3)
     s1.metric("Companies in view", str(len(pool_ids)))
     s2.metric("Combined Market Cap", fmt_money(combined_mcap))
@@ -332,10 +332,10 @@ with st.container(border=True):
 
     if ref_q is not None:
         coverage_phrase = (
-            "the latest calendar quarter with at least 80% of companies in view "
+            "the latest Calendar Quarter with at least 80% of companies in view "
             "reporting quarterly revenue"
             if used_coverage_floor
-            else "the broadest available calendar quarter because no quarter cleared "
+            else "the broadest available Calendar Quarter because no quarter cleared "
                  "the 80% coverage floor"
         )
         st.caption(
@@ -394,6 +394,13 @@ with st.container(border=True):
         if metric_df.empty:
             st.info(f"No usable {ratio_metric} data available for this lifecycle filter.")
         else:
+            metric_df = metric_df.sort_values("Sort_Key").copy()
+            metric_df["Period_Display"] = (
+                metric_df["Calendar_Year"].astype(int).astype(str)
+                + " "
+                + metric_df["Calendar_Quarter"].astype(str)
+            )
+
             # Y-axis scale. Focus range auto-expands when data falls outside
             # the default band so the line is never silently drawn off-canvas
             # (e.g. R&D Intensity in the Non-full-cycle pool lands below 15%).
@@ -421,7 +428,11 @@ with st.container(border=True):
                 alt.Chart(metric_df)
                 .mark_line(point=True)
                 .encode(
-                    x=alt.X("Period:N", sort=list(metric_df["Period"]), title="Calendar quarter"),
+                    x=alt.X(
+                        "Period_Display:N",
+                        sort=list(metric_df["Period_Display"]),
+                        title="Calendar Quarter",
+                    ),
                     y=alt.Y(
                         "Value:Q",
                         title=ratio_metric,
@@ -429,10 +440,10 @@ with st.container(border=True):
                         scale=y_scale,
                     ),
                     tooltip=[
-                        alt.Tooltip("Period:N", title="Period"),
+                        alt.Tooltip("Period_Display:N", title="Calendar Quarter"),
                         alt.Tooltip("Value:Q", title=ratio_metric, format=".1%"),
                         alt.Tooltip("Definition:N", title="Definition"),
-                        alt.Tooltip("Contributing_Companies:Q", title="Companies in metric"),
+                        alt.Tooltip("Contributing_Companies:Q", title="Metric contributors"),
                         alt.Tooltip("Reporting_Companies:Q", title="Quarterly reporters"),
                         alt.Tooltip("Companies_In_View:Q", title="Companies in filter"),
                         alt.Tooltip("Coverage:Q", title="Coverage", format=".0%"),
@@ -455,6 +466,21 @@ with st.container(border=True):
                 f'Companies in filter: &nbsp;<b>{int(latest_point["Companies_In_View"])}</b></span>'
                 f'</div>',
                 unsafe_allow_html=True
+            )
+
+            latest_period_display = latest_point.get("Period_Display", latest_point["Period"])
+            st.markdown(
+                f'<div style="font-size:13px; color:#E6E9EF; margin:8px 0 10px 0; '
+                f'padding:10px 12px; border-radius:6px; background-color:#1A1F2B; '
+                f'border:1px solid #2A2E3A; line-height:1.45;">'
+                f'<b>Latest eligible point:</b> {latest_period_display} — '
+                f'<b>{ratio_metric} {fmt_pct(latest_point["Value"])}</b> from '
+                f'<b>{int(latest_point["Contributing_Companies"])}</b> metric contributors and '
+                f'<b>{int(latest_point["Reporting_Companies"])}</b> quarterly reporters.<br>'
+                f'Dollar-weighted {latest_point["Definition"]} across the lifecycle filter. '
+                f'Only Q1–Q4 rows are included; FY/H1/9M rows are excluded to keep periods like-for-like.'
+                f'</div>',
+                unsafe_allow_html=True,
             )
 
             if y_axis_view == "Focus range":
@@ -487,31 +513,7 @@ with st.container(border=True):
                     unsafe_allow_html=True
                 )
 
-            quarterly_ids = set(financials.loc[
-                financials["Period_Type"].isin(QUARTERS)
-                & financials["Unique_ID"].isin(pool_ids),
-                "Unique_ID"
-            ].dropna().unique())
-            quarterly_count = len(quarterly_ids)
-            excluded_count = max(0, len(pool_ids) - quarterly_count)
-            excluded_sentence = (
-                f"Trend covers {quarterly_count} of {len(pool_ids)} companies with at least one Q1-Q4 row; "
-                f"{excluded_count} non-quarterly companies in this filter are excluded rather than converted into synthetic quarters. "
-                if excluded_count > 0
-                else f"Trend covers all {len(pool_ids)} companies in this filter with Q1-Q4 rows. "
-            )
 
-            st.caption(
-                f"Sector trend reflects the lifecycle filter. {ratio_metric} uses "
-                f"{latest_point['Definition']} and is dollar-weighted, so larger companies have larger influence. "
-                "Rows are grouped by Calendar_Quarter, not fiscal Period_Type, so fiscal-quarter reporters land in the correct market quarter. "
-                "Only Q1-Q4 rows are included; FY, H1 and 9M rows are excluded to keep periods like-for-like. "
-                "Quarters with less than 50% company coverage are hidden, so one-company leading-edge periods do not appear as sector trends. "
-                f"{excluded_sentence}"
-                f"Latest eligible point: {latest_point['Period']} from "
-                f"{int(latest_point['Contributing_Companies'])} companies with usable metric data "
-                f"and {int(latest_point['Reporting_Companies'])} quarterly reporters in view."
-            )
 
 # ── Intelligence Map ────────────────────────────────────────────────
 with st.container(border=True):
