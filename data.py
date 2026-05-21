@@ -41,6 +41,19 @@ def load_financials() -> pd.DataFrame:
 
 
 @st.cache_data
+def load_data_notes() -> pd.DataFrame:
+    """Load Dashboard_Data_Notes.csv. Returns empty frame if missing."""
+    path = DATA_DIR / "Dashboard_Data_Notes.csv"
+    if not path.exists():
+        return pd.DataFrame(columns=[
+            "Unique_ID", "Period_Type_Scope", "Status_Label",
+            "Tooltip", "Data_Treatment_Note", "Source_Files",
+        ])
+    df = pd.read_csv(path, encoding="utf-8-sig")
+    return df
+
+
+@st.cache_data
 def get_latest_financials(fin: pd.DataFrame) -> pd.DataFrame:
     """Per company, the most recent reported row.
 

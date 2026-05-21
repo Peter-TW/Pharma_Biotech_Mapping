@@ -3,6 +3,7 @@ app.py — Biopharma Command Center (MVP-1)
 Single-page Streamlit dashboard.
 """
 
+import html
 import pandas as pd
 import streamlit as st
 
@@ -53,6 +54,9 @@ latest = get_latest_financials(financials)
 lifecycle_df = get_lifecycle(master)
 positioning_df = get_positioning(master, latest)
 
+from data import load_data_notes
+data_notes = load_data_notes()
+
 FULL_CYCLE_LABEL = "Full-cycle (all 5 stages)"
 QUARTERS = ["Q1", "Q2", "Q3", "Q4"]
 METRICS = {
@@ -96,6 +100,26 @@ def field(value):
     if s == "" or s.lower() == "nan":
         return "—"
     return s
+
+
+def get_company_note(uid, scope="ALL"):
+    """Return (Status_Label, Tooltip) for a company at a given scope,
+    or (None, None) if no matching note exists."""
+    if data_notes.empty:
+        return (None, None)
+    sub = data_notes[
+        (data_notes["Unique_ID"] == uid) &
+        (data_notes["Period_Type_Scope"] == scope)
+    ]
+    if sub.empty:
+        return (None, None)
+    row = sub.iloc[0]
+    label = row.get("Status_Label")
+    tip = row.get("Tooltip")
+    return (
+        str(label).strip() if pd.notna(label) else None,
+        str(tip).strip() if pd.notna(tip) else None,
+    )
 
 
 # ── Sidebar: lifecycle filter + company selector ────────────────────
@@ -220,6 +244,10 @@ with st.container(border=True):
     )
     plot_df = plot_df.rename(columns={"Commercial": "is_commercial"})
     render_intelligence_map(plot_df, uid)
+    
+    map_label, map_tip = get_company_note(uid, "INTELLIGENCE_MAP")
+    if map_label:
+        st.caption(f"ℹ️ {selected_name}: {map_tip}")
 
 # ── Header ──────────────────────────────────────────────────────────
 with st.container(border=True):
@@ -244,6 +272,16 @@ with st.container(border=True):
     else:
         freshness = "Stale"
 
+    status_label, status_tooltip = get_company_note(uid, "ALL")
+    badge_html = (
+        f'&nbsp;&nbsp;'
+        f'<span title="{html.escape(status_tooltip or "")}" '
+        f'style="background:rgba(243,156,18,0.16); '
+        f'border:1px solid #F39C12; border-radius:6px; '
+        f'padding:3px 10px; font-size:13px; color:#E6E9EF;">'
+        f'Data Status &nbsp;<b>{html.escape(status_label)}</b></span>'
+    ) if status_label else ""
+
     st.markdown(
         f'<span style="background:rgba(0,180,216,0.16); border:1px solid #00B4D8; '
         f'border-radius:6px; padding:3px 10px; font-size:13px; color:#E6E9EF;">'
@@ -251,7 +289,8 @@ with st.container(border=True):
         f'&nbsp;&nbsp;'
         f'<span style="background:rgba(0,180,216,0.16); border:1px solid #00B4D8; '
         f'border-radius:6px; padding:3px 10px; font-size:13px; color:#E6E9EF;">'
-        f'Freshness &nbsp;<b>{freshness}</b></span>',
+        f'Freshness &nbsp;<b>{freshness}</b></span>'
+        f'{badge_html}',
         unsafe_allow_html=True,
     )
 
@@ -286,7 +325,13 @@ with st.container(border=True):
                   help="Cash \u00f7 Market Cap")
 
         st.caption(
-            "All figures in USD. Cash and Market Cap are point-in-time snapshots."
+            "All figures in USD. Cash and Market Cap are point-in-time snapshots. "
+            "Some companies show \u201c\u2014\u201d for a metric where their "
+            "official financial reports do not separately disclose that line item "
+            "(for example, R&D or SG&A bundled into broader expense categories). "
+            "In those cases we leave the value blank rather than estimating from "
+            "mixed totals \u2014 see the company\u2019s Data Status badge for "
+            "specifics."
         )
     else:
         st.info("No financial data available for this company.")
