@@ -1,0 +1,47 @@
+# Audit Trail — Japan / India Batch
+
+This folder records the data-discipline trail for the Japan / India
+coverage batch (7 companies: Takeda, Chugai, Daiichi Sankyo, Astellas,
+Ono, Sun Pharma, Otsuka). The deployed dashboard does not read these
+files at runtime — they exist for human audit, reproducibility, and
+methodology reference.
+
+## Pattern used for every change
+
+Every data change in this batch followed four steps, in order:
+
+1. **Staging** — official-source values extracted into per-company
+   staging files; no production touch.
+2. **Diagnostic** — comparison against current production, classified
+   into Ready / Needs second source check / Reject / Accepted gap.
+3. **Preview** — proposed actions written to a preview file; user
+   review required before any merge.
+4. **Controlled rewrite** — only after explicit approval; every cell
+   change recorded in a per-pass audit log with both old and new
+   values.
+
+This staging → diagnostic → preview → controlled rewrite sequence is
+the project's binding rule. Diagnostic passes are read-only.
+Production rewrites are scoped, hash-verified, and audited cell-by-cell.
+
+## Files in this folder
+
+| File | What it records |
+|---|---|
+| `JapanIndia_Final_Batch_Status.csv` | One row per company. Final status, hold-queue disposition, recommended dashboard label and tooltip, and the audit files justifying each status. |
+| `JapanIndia_Accepted_Gap_Policy.csv` | Periods that have no production row and never will, recorded as policy rather than as financial rows. Used for Otsuka's six "ghost" quarterly periods where no quarterly breakdown is disclosed. |
+| `JapanIndia_Hold_Queue_Evidence.csv` | The 31/03/2026 candidate quarter rows for Daiichi / Astellas / Ono, extracted from official PDFs but not merged. Append was deferred because the dashboard's period-priority logic surfaces the existing FY row regardless. Evidence is preserved here so the decision can be revisited. |
+| `JapanIndia_Safe_Metadata_Rewrite_Audit.csv` | The final controlled rewrite pass — Reviewer_Notes tags applied to Sun Pharma legacy SG&A rows and Otsuka gap rows. Zero financial values changed. |
+
+## How the dashboard uses any of this
+
+The dashboard reads `data/Dashboard_Data_Notes.csv` for status labels
+and tooltips. That file is a consolidated, dashboard-facing view derived
+from the audit files here. The audit files themselves are not loaded by
+`data.py` at runtime.
+
+## Re-opening a deferred decision
+
+If a deferred 31/03/2026 quarter ever needs to be appended in a future
+pass, the candidate values are already in `JapanIndia_Hold_Queue_Evidence.csv`.
+Re-extraction is not required.
