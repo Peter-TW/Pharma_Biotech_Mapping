@@ -4,6 +4,7 @@ Single-page Streamlit dashboard.
 """
 
 import html
+import math
 import altair as alt
 import pandas as pd
 import streamlit as st
@@ -103,6 +104,24 @@ def field(value):
     return s
 
 
+def fmt_period_label(row):
+    if row is None:
+        return "—"
+    period_type = row.get("Period_Type", "—")
+    year_val = row.get("Calendar_Year")
+    year_str = str(int(year_val)) if pd.notna(year_val) else ""
+    
+    disclosed = f"{period_type} {year_str}".strip()
+    cal_q = row.get("Calendar_Quarter")
+    if pd.notna(cal_q) and str(cal_q).strip():
+        cal_q_str = str(cal_q).strip()
+        calendar = f"Calendar {cal_q_str} {year_str}".strip()
+        if calendar.replace("Calendar ", "") != disclosed:
+            return f"{disclosed} · {calendar}"
+        return disclosed
+    return disclosed
+
+
 def get_company_note(uid, scope="ALL"):
     """Return (Status_Label, Tooltip) for a company at a given scope,
     or (None, None) if no matching note exists."""
@@ -184,9 +203,7 @@ company_fin = financials[financials["Unique_ID"] == uid].copy()
 
 latest_row = latest[latest["Unique_ID"] == uid]
 lr = latest_row.iloc[0] if not latest_row.empty else None
-period_label = (
-    f"{lr['Period_Type']} {int(lr['Calendar_Year'])}" if lr is not None else "—"
-)
+period_label = fmt_period_label(lr)
 
 # ── Sector Overview (reflects the lifecycle filter) ─────────────────
 pool_ids = frozenset(pool["Unique_ID"])
@@ -214,7 +231,7 @@ coverage = (
 # of companies in view reported quarterly revenue. Falls back to the broadest
 # available calendar quarter if no quarter clears the floor.
 pool_size = len(pool_ids) if len(pool_ids) > 0 else len(master)
-threshold = max(1, int(0.80 * pool_size))
+threshold = max(1, math.ceil(0.80 * pool_size))
 qualifying = coverage[coverage["n"] >= threshold].sort_values(
     ["Calendar_Year", "_q"], ascending=[False, False]
 )
@@ -246,6 +263,52 @@ else:
     period_rows = pd.DataFrame()
     combined_rev = pd.NA
     n_reporting = 0
+
+# Calculate Sector Trend dataset & latest plotted point (Priority 4)
+trend_df = get_sector_ratio_trend(financials, pool_ids, min_coverage_pct=0.50)
+if not trend_df.empty:
+    max_trend_row = trend_df.sort_values("Sort_Key").iloc[-1]
+    latest_trend_q = max_trend_row["Calendar_Quarter"]
+    latest_trend_year = int(max_trend_row["Calendar_Year"])
+    latest_trend_label = f"Calendar {latest_trend_q} {latest_trend_year}"
+    max_plotted_sort_key = int(max_trend_row["Sort_Key"])
+else:
+    latest_trend_label = "None"
+    max_plotted_sort_key = 0
+
+# Check for hidden leading edge quarters
+q_raw = financials[
+    financials["Unique_ID"].isin(pool_ids)
+    & financials["Period_Type"].isin(QUARTERS)
+    & financials["Calendar_Quarter"].isin(QUARTERS)
+].copy()
+if not q_raw.empty:
+    q_raw["_q"] = q_raw["Calendar_Quarter"].map({"Q1": 1, "Q2": 2, "Q3": 3, "Q4": 4})
+    q_raw["Sort_Key"] = q_raw["Calendar_Year"] * 10 + q_raw["_q"]
+    max_raw_sort_key = int(q_raw["Sort_Key"].max())
+else:
+    max_raw_sort_key = 0
+
+has_hidden = max_raw_sort_key > max_plotted_sort_key
+
+# Render Data Freshness Summary Card (Priority 4)
+overview_label = f"Calendar {ref_q} {ref_year}" if ref_q is not None else "No quarterly data"
+trend_label = latest_trend_label if latest_trend_label != "None" else "No quarterly data"
+hidden_clause = " Sparse leading-edge quarters are hidden from sector trends until coverage improves." if has_hidden else ""
+
+freshness_text = (
+    f"Latest broad-coverage quarter: <b>{overview_label}</b>. "
+    f"Latest eligible sector trend point: <b>{trend_label}</b>."
+    f"{hidden_clause}"
+)
+
+st.markdown(
+    f'<div style="font-size:13px; color:#E6E9EF; margin-bottom:15px; '
+    f'padding:8px 12px; border-radius:6px; background-color:#1A1F2B; border:1px solid #2A2E3A;">'
+    f'ℹ️ &nbsp;{freshness_text}'
+    f'</div>',
+    unsafe_allow_html=True
+)
 
 with st.container(border=True):
     st.subheader("Sector Overview")
@@ -293,7 +356,6 @@ with st.container(border=True):
         ),
     )
 
-    trend_df = get_sector_ratio_trend(financials, pool_ids, min_coverage_pct=0.50)
     if trend_df.empty:
         st.info("No quarterly sector trend data available for the current lifecycle filter.")
     else:
@@ -324,6 +386,36 @@ with st.container(border=True):
             st.altair_chart(chart, use_container_width=True)
 
             latest_point = metric_df.sort_values("Sort_Key").iloc[-1]
+
+            # Priority 1: Coverage Badges
+            st.markdown(
+                f'<div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px; margin-top:5px;">'
+                f'<span style="background:rgba(0,180,216,0.12); border:1px solid rgba(0,180,216,0.3); border-radius:6px; padding:4px 12px; font-size:12px; color:#E6E9EF;">'
+                f'Metric contributors: &nbsp;<b>{int(latest_point["Contributing_Companies"])}</b></span>'
+                f'<span style="background:rgba(0,180,216,0.12); border:1px solid rgba(0,180,216,0.3); border-radius:6px; padding:4px 12px; font-size:12px; color:#E6E9EF;">'
+                f'Quarterly reporters: &nbsp;<b>{int(latest_point["Reporting_Companies"])}</b></span>'
+                f'<span style="background:rgba(0,180,216,0.12); border:1px solid rgba(0,180,216,0.3); border-radius:6px; padding:4px 12px; font-size:12px; color:#E6E9EF;">'
+                f'Companies in filter: &nbsp;<b>{int(latest_point["Companies_In_View"])}</b></span>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+
+            # Priority 2: "What this means / does not mean" Microcopy
+            microcopy_map = {
+                "R&D Intensity": "R&D Intensity measures spending commitment, not pipeline quality or clinical success probability.",
+                "Cash / Market Cap": "Cash / Market Cap measures balance-sheet buffer relative to valuation, not whether a stock is undervalued.",
+                "SG&A Intensity": "SG&A Intensity measures commercial and administrative cost burden relative to revenue; it does not measure sales efficiency by itself."
+            }
+            note_text = microcopy_map.get(ratio_metric, "")
+            if note_text:
+                st.markdown(
+                    f'<div style="font-size:13px; color:#E6E9EF; margin-bottom:12px; '
+                    f'padding:8px 12px; border-radius:6px; background-color:#1A1F2B; border:1px solid #2A2E3A;">'
+                    f'💡 &nbsp;<b>Note:</b> {note_text}'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+
             quarterly_ids = set(financials.loc[
                 financials["Period_Type"].isin(QUARTERS)
                 & financials["Unique_ID"].isin(pool_ids),
