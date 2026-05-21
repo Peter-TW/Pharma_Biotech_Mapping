@@ -53,6 +53,16 @@ the Japan / India coverage batch.
 
 The app reads two committed CSV files only. It makes **no external API calls**.
 
+## Questions the dashboard answers
+
+- **Sector Overview** — What is the aggregate size and latest broad-coverage revenue base of the selected biopharma universe?
+- **Sector Trend** — Is the selected universe becoming more research-intensive, more cash-rich, or more SG&A-heavy over time?
+- **Intelligence Map** — How does this company position commercially and scientifically against the rest of the industry?
+- **Strategic Posture Quadrant** — Does this company have enough financial firepower to support its scientific investment?
+- **Financial Snapshot** — What is this company’s latest reported financial position?
+- **Financial Trend** — How has this company’s reported financial profile changed over time without mixing reporting cadences?
+- **Data Sources** — Can I trace where the company’s financial and profile data came from?
+
 ## Project structure
 
 ```

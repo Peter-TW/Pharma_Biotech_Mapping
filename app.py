@@ -104,6 +104,17 @@ def field(value):
     return s
 
 
+def question_prompt(text):
+    """Small section guide showing the question a chart is designed to answer."""
+    st.markdown(
+        f'<div style="font-size:13px; color:#C9D1D9; margin:-2px 0 12px 0; '
+        f'padding:8px 12px; border-radius:6px; background-color:#111827; '
+        f'border-left:3px solid #00B4D8;">'
+        f'<b>Question answered:</b> {html.escape(text)}</div>',
+        unsafe_allow_html=True,
+    )
+
+
 def fmt_period_label(row):
     if row is None:
         return "—"
@@ -312,6 +323,7 @@ st.markdown(
 
 with st.container(border=True):
     st.subheader("Sector Overview")
+    question_prompt("What is the aggregate size and latest broad-coverage revenue base of the selected biopharma universe?")
     s1, s2, s3 = st.columns(3)
     s1.metric("Companies in view", str(len(pool_ids)))
     s2.metric("Combined Market Cap", fmt_money(combined_mcap))
@@ -345,6 +357,7 @@ with st.container(border=True):
 # ── Sector Trend ────────────────────────────────────────────────────
 with st.container(border=True):
     st.subheader("Sector Trend")
+    question_prompt("Is the selected biopharma universe becoming more research-intensive, more cash-rich, or more SG&A-heavy over time?")
     ratio_options = ["R&D Intensity", "Cash / Market Cap", "SG&A Intensity"]
     ratio_metric = st.selectbox(
         "Sector ratio",
@@ -437,7 +450,7 @@ with st.container(border=True):
                 "Only Q1-Q4 rows are included; FY, H1 and 9M rows are excluded to keep periods like-for-like. "
                 "Quarters with less than 50% company coverage are hidden, so one-company leading-edge periods do not appear as sector trends. "
                 f"{excluded_sentence}"
-                f"Latest plotted point: {latest_point['Period']} from "
+                f"Latest eligible point: {latest_point['Period']} from "
                 f"{int(latest_point['Contributing_Companies'])} companies with usable metric data "
                 f"and {int(latest_point['Reporting_Companies'])} quarterly reporters in view."
             )
@@ -445,6 +458,7 @@ with st.container(border=True):
 # ── Intelligence Map ────────────────────────────────────────────────
 with st.container(border=True):
     st.subheader("Intelligence Map")
+    question_prompt("How does this company position commercially and scientifically against the rest of the industry?")
     plot_df = pool[["Unique_ID", "Company Name", "Commercial"]].merge(
         latest[["Unique_ID", "Q_Revenue", "rd_intensity", "Market_Cap_USD_M", "Period_Type"]],
         on="Unique_ID",
@@ -464,6 +478,7 @@ with st.container(border=True):
 # ── Strategic Posture Quadrant ───────────────────────────────────────
 with st.container(border=True):
     st.subheader("Strategic Posture Quadrant")
+    question_prompt("Does this company have enough financial firepower to support its scientific investment?")
     posture_df = pool[["Unique_ID", "Company Name", "Commercial"]].merge(
         latest[[
             "Unique_ID", "Q_Revenue", "Q_RD", "Q_Cash",
@@ -538,6 +553,7 @@ with st.container(border=True):
 # ── Financial Snapshot ──────────────────────────────────────────────
 with st.container(border=True):
     st.subheader("Financial Snapshot")
+    question_prompt("What is this company’s latest reported financial position?")
     st.markdown(
         '<span style="background:rgba(0,180,216,0.16); border:1px solid #00B4D8; '
         'border-radius:6px; padding:3px 10px; font-size:13px; color:#E6E9EF;">'
@@ -574,6 +590,7 @@ with st.container(border=True):
 # ── Financial Trend ─────────────────────────────────────────────────
 with st.container(border=True):
     st.subheader("Financial Trend")
+    question_prompt("How has this company’s reported financial profile changed over time without mixing reporting cadences?")
     metric_label = st.selectbox("Metric", list(METRICS.keys()), index=0)
     if not company_fin.empty:
         render_financial_trend(company_fin, metric_label, METRICS[metric_label])
@@ -600,6 +617,7 @@ with st.container(border=True):
 # ── Data Sources ────────────────────────────────────────────────────
 with st.container(border=True):
     st.subheader("Data Sources")
+    question_prompt("Can I trace where this company’s financial and profile data came from?")
     fin_sources = sorted(
         str(s) for s in company_fin["Source"].dropna().unique() if str(s).strip()
     )
