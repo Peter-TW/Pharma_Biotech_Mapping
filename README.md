@@ -40,6 +40,10 @@ the Japan / India coverage batch.
   quarterly reporters, and companies in the active lifecycle filter.
 - **Lifecycle Footprint** — the 5-stage pipeline (Discovery → Preclinical →
   Clinical Trials → FDA Review → Commercial) as a connected chip strip.
+- **Strategic Posture Quadrant** — compares R&D Intensity with Cash /
+  Market Cap to show whether companies combine scientific reinvestment with
+  financial firepower. Median lines are relative to the active lifecycle filter;
+  the chart is not a valuation or clinical-success signal.
 - **Financial Snapshot** — latest Revenue, R&D, SG&A, Cash, Market Cap, plus
   R&D intensity and Cash / Market Cap, with the reporting period shown clearly.
 - **Financial Trend** — pick a metric; the chart plots it over time with each
@@ -84,7 +88,7 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-The app opens at https://pharmabiotechmapping-ewsetptbhsm3npjygtssc5.streamlit.app/.
+The app opens at http://localhost:8501.
 
 ## Deploy to Streamlit Community Cloud (private GitHub repo)
 

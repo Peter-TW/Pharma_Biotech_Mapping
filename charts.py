@@ -305,3 +305,202 @@ def render_intelligence_map(plot_df, selected_uid):
         "(100%)."
     )
 
+
+
+# ── Strategic Posture Quadrant ───────────────────────────────────────
+
+def render_strategic_posture_quadrant(plot_df, selected_uid):
+    """Render the investor-style posture quadrant.
+
+    X-axis: Cash / Market Cap, a balance-sheet buffer relative to public
+    valuation. Y-axis: R&D Intensity, a spending commitment measure. Median
+    reference lines are calculated from companies currently in view, so the
+    quadrant adapts to the lifecycle filter instead of using hard-coded
+    thresholds.
+    """
+    required = ["cash_to_mktcap", "rd_intensity", "Market_Cap_USD_M"]
+    df = plot_df.dropna(subset=required).copy()
+    df = df[(df["cash_to_mktcap"] >= 0) & (df["Market_Cap_USD_M"] > 0)]
+
+    if len(df) < 3:
+        st.info("Not enough cash, market cap and R&D intensity data to plot the quadrant.")
+        return
+
+    def _fmt_money(val):
+        if pd.isna(val):
+            return "—"
+        a = abs(val)
+        if a >= 1_000_000:
+            return f"${val / 1_000_000:,.2f}T"
+        if a >= 1000:
+            return f"${val / 1000:,.1f}B"
+        return f"${val:,.0f}M"
+
+    def _fmt_pct(val):
+        if pd.isna(val):
+            return "—"
+        return f"{val:.1%}"
+
+    def _fmt_rd_hover(val):
+        if pd.isna(val):
+            return "—"
+        if val > 1.0:
+            return f"{val:.1%} (off-scale)"
+        return f"{val:.1%}"
+
+    # Keep the visual field readable without changing the underlying values.
+    df["plotted_rd_intensity"] = df["rd_intensity"].clip(upper=1.0)
+    df["marker_symbol"] = df["rd_intensity"].apply(
+        lambda v: "triangle-up" if v > 1.0 else "circle"
+    )
+
+    median_cash = df["cash_to_mktcap"].median()
+    median_rd = df["rd_intensity"].median()
+    plotted_median_rd = min(median_rd, 1.0)
+
+    mcap_vals = df["Market_Cap_USD_M"].fillna(1.0).clip(lower=1.0)
+    df["log_mcap"] = np.log10(mcap_vals)
+    min_log = df["log_mcap"].min()
+    max_log = df["log_mcap"].max()
+    if pd.isna(min_log) or pd.isna(max_log) or min_log == max_log:
+        df["bubble_size"] = 22.0
+    else:
+        df["bubble_size"] = 9.0 + (df["log_mcap"] - min_log) / (max_log - min_log) * (40.0 - 9.0)
+
+    # Use existing positioning categories for color so this chart connects with
+    # the Intelligence Map's language.
+    positioning_colors = {
+        "Full-cycle leader": "#00B4D8",
+        "R&D-driven commercial": "#2ECC71",
+        "Commercial-led": "#F39C12",
+        "Pipeline-stage challenger": "#FF758F",
+    }
+    fallback_color = "#888888"
+
+    fig = go.Figure()
+    for pos in sorted(df["positioning"].fillna("Unclassified").unique()):
+        sub = df[df["positioning"].fillna("Unclassified") == pos]
+        if sub.empty:
+            continue
+        custom_data = list(zip(
+            sub["Company Name"],
+            sub["positioning"].fillna("Unclassified"),
+            sub.get("lifecycle_profile", pd.Series(["—"] * len(sub), index=sub.index)).fillna("—"),
+            sub["cash_to_mktcap"].apply(_fmt_pct),
+            sub["rd_intensity"].apply(_fmt_rd_hover),
+            sub["Q_Cash"].apply(_fmt_money) if "Q_Cash" in sub.columns else pd.Series(["—"] * len(sub), index=sub.index),
+            sub["Market_Cap_USD_M"].apply(_fmt_money),
+        ))
+        fig.add_trace(
+            go.Scatter(
+                x=sub["cash_to_mktcap"],
+                y=sub["plotted_rd_intensity"],
+                mode="markers",
+                name=pos,
+                marker=dict(
+                    size=sub["bubble_size"],
+                    sizemode="diameter",
+                    color=positioning_colors.get(pos, fallback_color),
+                    symbol=sub["marker_symbol"],
+                    line=dict(width=1, color="rgba(255,255,255,0.3)"),
+                ),
+                customdata=custom_data,
+                hovertemplate=(
+                    "<b>%{customdata[0]}</b><br>"
+                    "Positioning: %{customdata[1]}<br>"
+                    "Lifecycle: %{customdata[2]}<br>"
+                    "Cash / Market Cap: %{customdata[3]}<br>"
+                    "R&D Intensity: %{customdata[4]}<br>"
+                    "Cash: %{customdata[5]}<br>"
+                    "Market Cap: %{customdata[6]}<extra></extra>"
+                ),
+            )
+        )
+
+    # Selected-company outline.
+    if selected_uid:
+        sel_row = df[df["Unique_ID"] == selected_uid]
+        if not sel_row.empty:
+            row = sel_row.iloc[0]
+            fig.add_trace(
+                go.Scatter(
+                    x=[row["cash_to_mktcap"]],
+                    y=[row["plotted_rd_intensity"]],
+                    mode="markers",
+                    name="Selected",
+                    marker=dict(
+                        size=[row["bubble_size"]],
+                        sizemode="diameter",
+                        color="rgba(0,0,0,0)",
+                        symbol="triangle-up" if row["rd_intensity"] > 1.0 else "circle",
+                        line=dict(width=3, color="#FFFFFF"),
+                    ),
+                    showlegend=False,
+                    hoverinfo="skip",
+                )
+            )
+
+    x_max = max(df["cash_to_mktcap"].max() * 1.12, median_cash * 1.8, 0.10)
+    y_max = 1.0
+
+    fig.update_layout(
+        height=410,
+        margin=dict(l=10, r=10, t=35, b=10),
+        xaxis=dict(
+            title="Cash / Market Cap",
+            tickformat=".0%",
+            range=[0, x_max],
+            showgrid=True,
+            gridcolor="#2A2E3A",
+            zeroline=False,
+        ),
+        yaxis=dict(
+            title="R&D Intensity",
+            tickformat=".0%",
+            range=[-0.05, y_max],
+            showgrid=True,
+            gridcolor="#2A2E3A",
+            zeroline=False,
+        ),
+        shapes=[
+            dict(
+                type="line", x0=median_cash, x1=median_cash, y0=-0.05, y1=y_max,
+                line=dict(color="rgba(255,255,255,0.35)", width=1, dash="dash"),
+            ),
+            dict(
+                type="line", x0=0, x1=x_max, y0=plotted_median_rd, y1=plotted_median_rd,
+                line=dict(color="rgba(255,255,255,0.35)", width=1, dash="dash"),
+            ),
+        ],
+        annotations=[
+            dict(x=x_max * 0.98, y=y_max * 0.95, text="R&D firepower", showarrow=False,
+                 font=dict(size=11, color="#8A91A0"), xanchor="right"),
+            dict(x=x_max * 0.02, y=y_max * 0.95, text="Funding pressure", showarrow=False,
+                 font=dict(size=11, color="#8A91A0"), xanchor="left"),
+            dict(x=x_max * 0.98, y=0.02, text="Capital reserve", showarrow=False,
+                 font=dict(size=11, color="#8A91A0"), xanchor="right"),
+            dict(x=x_max * 0.02, y=0.02, text="Commercial / valuation dependent", showarrow=False,
+                 font=dict(size=11, color="#8A91A0"), xanchor="left"),
+        ],
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="center",
+            x=0.5,
+            font=dict(size=11, color="#E6E9EF"),
+        ),
+        hovermode="closest",
+    )
+
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.caption(
+        "Strategic Posture compares R&D intensity with cash buffer relative to "
+        "market value. Dashed lines show the median of companies currently in "
+        "view, so quadrants are relative to the selected lifecycle filter. Bubble "
+        "size is log-scaled market cap. Companies above 100% R&D intensity are "
+        "shown clamped at the top edge (100%). This highlights financial capacity "
+        "and research commitment, not valuation upside or clinical success probability."
+    )

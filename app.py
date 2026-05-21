@@ -10,7 +10,7 @@ import pandas as pd
 import streamlit as st
 
 from data import load_master, load_financials, get_latest_financials, get_lifecycle, get_positioning, get_sector_ratio_trend
-from charts import render_lifecycle_strip, render_financial_trend, render_intelligence_map
+from charts import render_lifecycle_strip, render_financial_trend, render_intelligence_map, render_strategic_posture_quadrant
 
 st.set_page_config(
     page_title="Biopharma Command Center",
@@ -460,6 +460,29 @@ with st.container(border=True):
     map_label, map_tip = get_company_note(uid, "INTELLIGENCE_MAP")
     if map_label:
         st.caption(f"ℹ️ {selected_name}: {map_tip}")
+
+# ── Strategic Posture Quadrant ───────────────────────────────────────
+with st.container(border=True):
+    st.subheader("Strategic Posture Quadrant")
+    posture_df = pool[["Unique_ID", "Company Name", "Commercial"]].merge(
+        latest[[
+            "Unique_ID", "Q_Revenue", "Q_RD", "Q_Cash",
+            "rd_intensity", "cash_to_mktcap", "Market_Cap_USD_M", "Period_Type"
+        ]],
+        on="Unique_ID",
+        how="left"
+    ).merge(
+        positioning_df[["Unique_ID", "positioning"]],
+        on="Unique_ID",
+        how="left"
+    ).merge(
+        lifecycle_df[["Unique_ID", "lifecycle_profile"]],
+        on="Unique_ID",
+        how="left"
+    )
+
+    render_strategic_posture_quadrant(posture_df, uid)
+
 
 # ── Header ──────────────────────────────────────────────────────────
 with st.container(border=True):
