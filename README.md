@@ -98,7 +98,7 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-The app opens at http://localhost:8501.
+The app opens at https://pharmabiotechmapping-ewsetptbhsm3npjygtssc5.streamlit.app/
 
 ## Deploy to Streamlit Community Cloud (private GitHub repo)
 
