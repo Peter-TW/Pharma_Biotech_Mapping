@@ -194,56 +194,89 @@ combined_mcap = latest.loc[
     latest["Unique_ID"].isin(pool_ids), "Market_Cap_USD_M"
 ].sum()
 
-# Reference quarter = the most recent quarter with BROAD coverage (most
-# companies reporting), not the leading edge where only 1-2 firms have filed.
+# Reference quarter = the most recent CALENDAR quarter with BROAD coverage
+# for the current lifecycle filter. Keep Period_Type only as a quarterly-row
+# filter; use Calendar_Quarter as the market-time bucket so fiscal-quarter
+# reporters land in the correct calendar period.
 q_rows = financials[
-    financials["Period_Type"].isin(QUARTERS) & financials["Q_Revenue"].notna()
+    financials["Period_Type"].isin(QUARTERS)
+    & financials["Calendar_Quarter"].isin(QUARTERS)
+    & financials["Q_Revenue"].notna()
+    & financials["Unique_ID"].isin(pool_ids)
 ].copy()
-q_rows["_q"] = q_rows["Period_Type"].map({"Q1": 1, "Q2": 2, "Q3": 3, "Q4": 4})
+q_rows["_q"] = q_rows["Calendar_Quarter"].map({"Q1": 1, "Q2": 2, "Q3": 3, "Q4": 4})
 coverage = (
-    q_rows.groupby(["Calendar_Year", "_q", "Period_Type"])["Unique_ID"]
+    q_rows.groupby(["Calendar_Year", "_q", "Calendar_Quarter"])["Unique_ID"]
     .nunique()
     .reset_index(name="n")
 )
-# Coverage floor: prefer the most recent quarter where at least 80% of the
-# companies in view have reported. Falls back to broadest-coverage if no
-# quarter clears the floor.
+# Coverage floor: prefer the most recent calendar quarter where at least 80%
+# of companies in view reported quarterly revenue. Falls back to the broadest
+# available calendar quarter if no quarter clears the floor.
 pool_size = len(pool_ids) if len(pool_ids) > 0 else len(master)
 threshold = max(1, int(0.80 * pool_size))
 qualifying = coverage[coverage["n"] >= threshold].sort_values(
     ["Calendar_Year", "_q"], ascending=[False, False]
 )
-if not qualifying.empty:
+used_coverage_floor = not qualifying.empty
+if used_coverage_floor:
     ref_year = int(qualifying.iloc[0]["Calendar_Year"])
-    ref_q = qualifying.iloc[0]["Period_Type"]
+    ref_q = qualifying.iloc[0]["Calendar_Quarter"]
 else:
     fallback = coverage.sort_values(
         ["n", "Calendar_Year", "_q"], ascending=[False, False, False]
     )
-    ref_year = int(fallback.iloc[0]["Calendar_Year"])
-    ref_q = fallback.iloc[0]["Period_Type"]
+    if fallback.empty:
+        ref_year = None
+        ref_q = None
+    else:
+        ref_year = int(fallback.iloc[0]["Calendar_Year"])
+        ref_q = fallback.iloc[0]["Calendar_Quarter"]
 
-period_rows = financials[
-    (financials["Period_Type"] == ref_q)
-    & (financials["Calendar_Year"] == ref_year)
-    & (financials["Unique_ID"].isin(pool_ids))
-]
-combined_rev = period_rows["Q_Revenue"].sum()
-n_reporting = int(period_rows["Q_Revenue"].notna().sum())
+if ref_year is not None and ref_q is not None:
+    period_rows = financials[
+        (financials["Calendar_Year"] == ref_year)
+        & (financials["Calendar_Quarter"] == ref_q)
+        & (financials["Period_Type"].isin(QUARTERS))
+        & (financials["Unique_ID"].isin(pool_ids))
+    ]
+    combined_rev = period_rows["Q_Revenue"].sum()
+    n_reporting = int(period_rows.loc[period_rows["Q_Revenue"].notna(), "Unique_ID"].nunique())
+else:
+    period_rows = pd.DataFrame()
+    combined_rev = pd.NA
+    n_reporting = 0
 
 with st.container(border=True):
     st.subheader("Sector Overview")
     s1, s2, s3 = st.columns(3)
     s1.metric("Companies in view", str(len(pool_ids)))
     s2.metric("Combined Market Cap", fmt_money(combined_mcap))
-    s3.metric(f"Combined Revenue · {ref_q} {ref_year}", fmt_money(combined_rev))
-    st.caption(
-        "Totals reflect the lifecycle filter. Market cap is summed at each "
-        "company's latest reported date (approximate). Revenue is the combined "
-        f"{ref_q} {ref_year} figure — the latest quarter "
-        f"with at least 80% of companies reporting — from {n_reporting} of "
-        f"{len(pool_ids)} companies that reported that period."
-    )
+    revenue_label = f"Calendar {ref_q} {ref_year}" if ref_q is not None else "No quarterly data"
+    s3.metric(f"Combined Revenue · {revenue_label}", fmt_money(combined_rev))
+
+    if ref_q is not None:
+        coverage_phrase = (
+            "the latest calendar quarter with at least 80% of companies in view "
+            "reporting quarterly revenue"
+            if used_coverage_floor
+            else "the broadest available calendar quarter because no quarter cleared "
+                 "the 80% coverage floor"
+        )
+        st.caption(
+            "Totals reflect the lifecycle filter. Market cap is summed at each "
+            "company's latest reported date (approximate). Revenue is the combined "
+            f"calendar {ref_q} {ref_year} figure — {coverage_phrase} — from "
+            f"{n_reporting} of {len(pool_ids)} companies. Fiscal-quarter labels are "
+            "grouped by Calendar_Quarter, while Period_Type is used only to exclude "
+            "FY, H1 and 9M rows from this quarterly sector view."
+        )
+    else:
+        st.caption(
+            "Totals reflect the lifecycle filter. Market cap is summed at each "
+            "company's latest reported date (approximate). No Q1-Q4 revenue rows "
+            "are available for the current lifecycle filter."
+        )
 
 
 # ── Sector Trend ────────────────────────────────────────────────────
