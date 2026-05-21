@@ -298,7 +298,10 @@ def render_intelligence_map(plot_df, selected_uid):
     
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     st.caption(
-        "Bubble size: log-scaled market cap. Companies above 100% R&D intensity "
-        "are shown clamped at the top edge (100%)."
+        "Bubble size: log-scaled market cap. X-axis uses reported quarterly "
+        "revenue where available; FY reporters are visually annualised ÷4 for "
+        "map placement only and are not written back as synthetic quarters. "
+        "Companies above 100% R&D intensity are shown clamped at the top edge "
+        "(100%)."
     )
 

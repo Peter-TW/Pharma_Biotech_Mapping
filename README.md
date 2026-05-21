@@ -1,9 +1,9 @@
 # Biopharma Command Center
 
 A single-page Streamlit dashboard that turns two biopharma datasets into an
-interactive company intelligence map. It opens on a sector-wide overview, then
-lets you drill into any of 50 companies — lifecycle footprint, latest financial
-snapshot, financial trend, and data provenance.
+interactive company intelligence map. It opens on a sector-wide overview and
+sector trend, then lets you drill into any of 50 companies — lifecycle
+footprint, latest financial snapshot, financial trend, and data provenance.
 
 This is **MVP-1**. The relationship/network map and the strategic posture
 quadrant are planned later passes and are intentionally not built yet.
@@ -19,9 +19,11 @@ value in a per-pass audit log.
 
 Where a company doesn't disclose a metric (Sun Pharma's SG&A, Otsuka's
 quarterly breakdown), the dashboard shows a blank rather than a proxy.
-Where reporting cadence is genuinely half-yearly (Roche, Haleon, CSL),
-the dashboard labels it rather than fabricating quarters. The principle
-is: honest gaps over confident guesses.
+Where reporting cadence is genuinely half-yearly or annual-only, the
+dashboard labels it rather than fabricating quarters. Sector-level quarterly
+views use Q1-Q4 rows only and group by Calendar_Quarter, so fiscal-quarter
+labels land in the correct market-time bucket. The principle is: honest gaps
+over confident guesses.
 
 See [`audit/`](audit/) for the full methodology and the audit trail of
 the Japan / India coverage batch.
@@ -31,7 +33,11 @@ the Japan / India coverage batch.
 - **Lifecycle filter** (sidebar) — show All companies, Full-cycle only, or
   Non-full-cycle only. Defaults to All.
 - **Sector Overview** — companies in view, combined market cap, and combined
-  latest-quarter revenue. Updates with the lifecycle filter.
+  broad-coverage calendar-quarter revenue. Updates with the lifecycle filter.
+- **Sector Trend** — dollar-weighted sector ratio trends for R&D Intensity,
+  Cash / Market Cap, and SG&A Intensity. Uses Q1-Q4 rows only, grouped by
+  Calendar_Quarter, with coverage badges showing metric contributors,
+  quarterly reporters, and companies in the active lifecycle filter.
 - **Lifecycle Footprint** — the 5-stage pipeline (Discovery → Preclinical →
   Clinical Trials → FDA Review → Commercial) as a connected chip strip.
 - **Financial Snapshot** — latest Revenue, R&D, SG&A, Cash, Market Cap, plus
@@ -49,7 +55,7 @@ The app reads two committed CSV files only. It makes **no external API calls**.
 .
 ├── app.py                  # page layout + module calls
 ├── data.py                 # CSV loading + derived tables (all cached)
-├── charts.py               # lifecycle strip + financial trend chart
+├── charts.py               # lifecycle strip + company financial/intelligence charts
 ├── requirements.txt        # pinned dependencies
 ├── .gitignore
 ├── .streamlit/
