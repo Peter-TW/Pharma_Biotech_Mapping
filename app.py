@@ -4,10 +4,11 @@ Single-page Streamlit dashboard.
 """
 
 import html
+import altair as alt
 import pandas as pd
 import streamlit as st
 
-from data import load_master, load_financials, get_latest_financials, get_lifecycle, get_positioning
+from data import load_master, load_financials, get_latest_financials, get_lifecycle, get_positioning, get_sector_ratio_trend
 from charts import render_lifecycle_strip, render_financial_trend, render_intelligence_map
 
 st.set_page_config(
@@ -188,7 +189,7 @@ period_label = (
 )
 
 # ── Sector Overview (reflects the lifecycle filter) ─────────────────
-pool_ids = set(pool["Unique_ID"])
+pool_ids = frozenset(pool["Unique_ID"])
 combined_mcap = latest.loc[
     latest["Unique_ID"].isin(pool_ids), "Market_Cap_USD_M"
 ].sum()
@@ -243,6 +244,78 @@ with st.container(border=True):
         f"with at least 80% of companies reporting — from {n_reporting} of "
         f"{len(pool_ids)} companies that reported that period."
     )
+
+
+# ── Sector Trend ────────────────────────────────────────────────────
+with st.container(border=True):
+    st.subheader("Sector Trend")
+    ratio_options = ["R&D Intensity", "Cash / Market Cap", "SG&A Intensity"]
+    ratio_metric = st.selectbox(
+        "Sector ratio",
+        ratio_options,
+        index=0,
+        help=(
+            "All ratios are dollar-weighted aggregate ratios using quarterly "
+            "rows only: Σ numerator ÷ Σ denominator."
+        ),
+    )
+
+    trend_df = get_sector_ratio_trend(financials, pool_ids, min_coverage_pct=0.50)
+    if trend_df.empty:
+        st.info("No quarterly sector trend data available for the current lifecycle filter.")
+    else:
+        metric_df = trend_df[trend_df["Metric"] == ratio_metric].copy()
+        metric_df = metric_df[metric_df["Value"].notna()]
+
+        if metric_df.empty:
+            st.info(f"No usable {ratio_metric} data available for this lifecycle filter.")
+        else:
+            chart = (
+                alt.Chart(metric_df)
+                .mark_line(point=True)
+                .encode(
+                    x=alt.X("Period:N", sort=list(metric_df["Period"]), title="Calendar quarter"),
+                    y=alt.Y("Value:Q", title=ratio_metric, axis=alt.Axis(format="%")),
+                    tooltip=[
+                        alt.Tooltip("Period:N", title="Period"),
+                        alt.Tooltip("Value:Q", title=ratio_metric, format=".1%"),
+                        alt.Tooltip("Definition:N", title="Definition"),
+                        alt.Tooltip("Contributing_Companies:Q", title="Companies in metric"),
+                        alt.Tooltip("Reporting_Companies:Q", title="Quarterly reporters"),
+                        alt.Tooltip("Companies_In_View:Q", title="Companies in filter"),
+                        alt.Tooltip("Coverage:Q", title="Coverage", format=".0%"),
+                    ],
+                )
+                .properties(height=280)
+            )
+            st.altair_chart(chart, use_container_width=True)
+
+            latest_point = metric_df.sort_values("Sort_Key").iloc[-1]
+            quarterly_ids = set(financials.loc[
+                financials["Period_Type"].isin(QUARTERS)
+                & financials["Unique_ID"].isin(pool_ids),
+                "Unique_ID"
+            ].dropna().unique())
+            quarterly_count = len(quarterly_ids)
+            excluded_count = max(0, len(pool_ids) - quarterly_count)
+            excluded_sentence = (
+                f"Trend covers {quarterly_count} of {len(pool_ids)} companies with at least one Q1-Q4 row; "
+                f"{excluded_count} non-quarterly companies in this filter are excluded rather than converted into synthetic quarters. "
+                if excluded_count > 0
+                else f"Trend covers all {len(pool_ids)} companies in this filter with Q1-Q4 rows. "
+            )
+
+            st.caption(
+                f"Sector trend reflects the lifecycle filter. {ratio_metric} uses "
+                f"{latest_point['Definition']} and is dollar-weighted, so larger companies have larger influence. "
+                "Rows are grouped by Calendar_Quarter, not fiscal Period_Type, so fiscal-quarter reporters land in the correct market quarter. "
+                "Only Q1-Q4 rows are included; FY, H1 and 9M rows are excluded to keep periods like-for-like. "
+                "Quarters with less than 50% company coverage are hidden, so one-company leading-edge periods do not appear as sector trends. "
+                f"{excluded_sentence}"
+                f"Latest plotted point: {latest_point['Period']} from "
+                f"{int(latest_point['Contributing_Companies'])} companies with usable metric data "
+                f"and {int(latest_point['Reporting_Companies'])} quarterly reporters in view."
+            )
 
 # ── Intelligence Map ────────────────────────────────────────────────
 with st.container(border=True):
