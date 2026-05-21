@@ -1,0 +1,7 @@
+Unique_ID,Ticker,Company_Name,Period,Quarter_End_Date,Classification,Reviewer_Note,Recorded_On_Date
+CMP-021,4578.T,Otsuka Holdings,2024 Q1,31/03/2024,Accepted permanent gap,[ACCEPTED_PERMANENT_GAP_D4] Otsuka does not disclose quarterly breakdown; permanent classification under current policy.,20/05/2026
+CMP-021,4578.T,Otsuka Holdings,2024 Q2,30/06/2024,Accepted permanent gap,[ACCEPTED_PERMANENT_GAP_D4] Otsuka does not disclose quarterly breakdown; permanent classification under current policy.,20/05/2026
+CMP-021,4578.T,Otsuka Holdings,2024 Q3,30/09/2024,Accepted permanent gap,[ACCEPTED_PERMANENT_GAP_D4] Otsuka does not disclose quarterly breakdown; permanent classification under current policy.,20/05/2026
+CMP-021,4578.T,Otsuka Holdings,2025 Q1,31/03/2025,Accepted pending source,[ACCEPTED_PENDING_SOURCE_D4] No official source published/provided; re-check when source publishes.,20/05/2026
+CMP-021,4578.T,Otsuka Holdings,2025 Q2,30/06/2025,Accepted pending source,[ACCEPTED_PENDING_SOURCE_D4] No official source published/provided; re-check when source publishes.,20/05/2026
+CMP-021,4578.T,Otsuka Holdings,2025 Q3,30/09/2025,Accepted pending source,[ACCEPTED_PENDING_SOURCE_D4] No official source published/provided; re-check when source publishes.,20/05/2026
