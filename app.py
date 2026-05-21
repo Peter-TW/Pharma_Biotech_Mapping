@@ -345,6 +345,23 @@ with st.container(border=True):
     else:
         st.info("No reporting data available.")
 
+    status_label, _ = get_company_note(uid, "ALL")
+    partial_metrics = {"R&D", "SG&A", "Cash"}
+    if (status_label == "Accepted partial"
+        and metric_label in partial_metrics
+        and not company_fin.empty):
+        st.caption(
+            f"\u26A0\uFE0F  {metric_label} values shown here come from legacy "
+            f"data sources. {selected_name} does not separately disclose this "
+            f"line item in its official consolidated financial results \u2014 line "
+            f"items are bundled into broader expense categories. The latest "
+            f"period reflects this (value shown as \u201c\u2014\u201d in the "
+            f"Financial Snapshot above). Earlier periods are preserved for "
+            f"trend context but are tagged "
+            f"[LEGACY_SGA_UNAUDITED] in the data and have not been audited "
+            f"against the company\u2019s primary filings."
+        )
+
 # ── Data Sources ────────────────────────────────────────────────────
 with st.container(border=True):
     st.subheader("Data Sources")
