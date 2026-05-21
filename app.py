@@ -369,6 +369,22 @@ with st.container(border=True):
         ),
     )
 
+    focus_ranges = {
+        "R&D Intensity": (0.15, 0.25),
+        "Cash / Market Cap": (0.00, 0.10),
+        "SG&A Intensity": (0.15, 0.35),
+    }
+    y_axis_view = st.radio(
+        "Y-axis view",
+        ["Focus range", "Full range"],
+        index=0,
+        horizontal=True,
+        help=(
+            "Focus range narrows the y-axis to make small sector-level changes "
+            "easier to see. It does not change the underlying calculation."
+        ),
+    )
+
     if trend_df.empty:
         st.info("No quarterly sector trend data available for the current lifecycle filter.")
     else:
@@ -378,12 +394,40 @@ with st.container(border=True):
         if metric_df.empty:
             st.info(f"No usable {ratio_metric} data available for this lifecycle filter.")
         else:
+            # Y-axis scale. Focus range auto-expands when data falls outside
+            # the default band so the line is never silently drawn off-canvas
+            # (e.g. R&D Intensity in the Non-full-cycle pool lands below 15%).
+            focus_min, focus_max = focus_ranges[ratio_metric]
+            data_min = float(metric_df["Value"].min())
+            data_max = float(metric_df["Value"].max())
+            focus_covers = data_min >= focus_min and data_max <= focus_max
+            focus_expanded = False
+            y_min_eff, y_max_eff = focus_min, focus_max
+
+            if y_axis_view == "Focus range":
+                if focus_covers:
+                    y_scale = alt.Scale(domain=[focus_min, focus_max])
+                else:
+                    pad = max((data_max - data_min) * 0.1, 0.005)
+                    y_min_eff = min(focus_min, data_min - pad)
+                    y_max_eff = max(focus_max, data_max + pad)
+                    y_scale = alt.Scale(domain=[y_min_eff, y_max_eff])
+                    focus_expanded = True
+            else:
+                # Full range = include 0 to show absolute magnitude.
+                y_scale = alt.Scale(zero=True)
+
             chart = (
                 alt.Chart(metric_df)
                 .mark_line(point=True)
                 .encode(
                     x=alt.X("Period:N", sort=list(metric_df["Period"]), title="Calendar quarter"),
-                    y=alt.Y("Value:Q", title=ratio_metric, axis=alt.Axis(format="%")),
+                    y=alt.Y(
+                        "Value:Q",
+                        title=ratio_metric,
+                        axis=alt.Axis(format="%"),
+                        scale=y_scale,
+                    ),
                     tooltip=[
                         alt.Tooltip("Period:N", title="Period"),
                         alt.Tooltip("Value:Q", title=ratio_metric, format=".1%"),
@@ -412,6 +456,20 @@ with st.container(border=True):
                 f'</div>',
                 unsafe_allow_html=True
             )
+
+            if y_axis_view == "Focus range":
+                if focus_expanded:
+                    st.caption(
+                        f"Y-axis expanded to {y_min_eff:.1%}–{y_max_eff:.1%} because some "
+                        f"values fall outside the default {focus_min:.0%}–{focus_max:.0%} focus band "
+                        f"for this lifecycle filter. The underlying calculation is unchanged; "
+                        f"switch to Full range to see absolute magnitude from 0."
+                    )
+                else:
+                    st.caption(
+                        f"Y-axis focus range: {focus_min:.0%}–{focus_max:.0%}. "
+                        "This zoom makes small sector-level changes easier to see and does not change the underlying calculation."
+                    )
 
             # Priority 2: "What this means / does not mean" Microcopy
             microcopy_map = {
