@@ -169,6 +169,7 @@ def render_financial_trend(company_fin, metric_label, metric_col):
             xanchor="center", x=0.5, font=dict(size=11),
         ),
         hovermode="closest",
+        hoverlabel=dict(align="left"),
     )
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
@@ -339,6 +340,7 @@ def render_intelligence_map(plot_df, selected_uid, compact=False):
             font=dict(size=11, color="#E6E9EF"),
         ),
         hovermode="closest",
+        hoverlabel=dict(align="left"),
     )
     
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
@@ -539,6 +541,7 @@ def render_strategic_posture_quadrant(plot_df, selected_uid, compact=False):
             font=dict(size=11, color="#E6E9EF"),
         ),
         hovermode="closest",
+        hoverlabel=dict(align="left"),
     )
 
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
@@ -745,6 +748,7 @@ def render_bridge_chart(df_bridge, y_axis_choice, selected_unique_id=None):
             font=dict(size=11, color="#E6E9EF"),
         ),
         hovermode="closest",
+        hoverlabel=dict(align="left"),
     )
 
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
