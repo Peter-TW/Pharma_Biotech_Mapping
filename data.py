@@ -388,7 +388,7 @@ def load_clinical_inventory_normalized() -> pd.DataFrame:
     date_cols = ["Last_Update_Submit_Date", "Start_Date", "Primary_Completion_Date", "Completion_Date", "Fetched_At_UTC"]
     for col in date_cols:
         if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors="coerce")
+            df[col] = pd.to_datetime(df[col], errors="coerce", format="mixed", dayfirst=True)
             
     # Coerce booleans for owned/participated flags
     for col in ["Counts_As_Owned_Trial", "Counts_As_Participated_In"]:
@@ -464,5 +464,58 @@ def get_company_clinical_inventory(clinical_inventory: pd.DataFrame, uid: str, s
     df = df.drop(columns=["_status_prio", "_phase_prio"])
     
     return df
+
+
+@st.cache_data
+def load_clinical_change_feed() -> pd.DataFrame:
+    """Load ClinicalTrials_Change_Feed.csv with type coercion and date parsing. Returns empty if missing."""
+    path = DATA_DIR / "clinical_trials" / "ClinicalTrials_Change_Feed.csv"
+    expected_cols = [
+        "Event_ID", "Run_ID", "Detected_At_UTC", "Snapshot_Date_Current", "Snapshot_Date_Previous",
+        "Unique_ID", "Company_Name", "NCT_ID", "Brief_Title", "Study_URL",
+        "Change_Type", "Change_Priority", "Previous_Status_Bucket", "Current_Status_Bucket",
+        "Previous_Overall_Status_Raw", "Current_Overall_Status_Raw",
+        "Previous_Phase_Bucket_Exclusive", "Current_Phase_Bucket_Exclusive",
+        "Previous_Phases_Raw", "Current_Phases_Raw", "Previous_Sponsor_Match_Type",
+        "Current_Sponsor_Match_Type", "Previous_Ownership_Context", "Current_Ownership_Context",
+        "Counts_As_Owned_Trial_Previous", "Counts_As_Owned_Trial_Current",
+        "Counts_As_Participated_In_Previous", "Counts_As_Participated_In_Current",
+        "Changed_Fields_Detail", "Window_30D", "Window_90D", "Last_Update_Submit_Date",
+        "Reviewer_Notes"
+    ]
+    if not path.exists():
+        return pd.DataFrame(columns=expected_cols)
+    
+    # Read preserving NCT_ID as string
+    df = pd.read_csv(path, encoding="utf-8-sig", dtype={"NCT_ID": str})
+    
+    if df.empty:
+        return pd.DataFrame(columns=expected_cols)
+        
+    # Parse Detected_At_UTC as datetime
+    if "Detected_At_UTC" in df.columns:
+        df["Detected_At_UTC"] = pd.to_datetime(df["Detected_At_UTC"], errors="coerce", format="mixed", dayfirst=True)
+        
+    # Parse booleans Window_30D and Window_90D robustly if present
+    for col in ["Window_30D", "Window_90D"]:
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.strip().str.upper() == "TRUE"
+            
+    # Construct Study_URL from NCT_ID if missing
+    if "Study_URL" in df.columns:
+        mask = df["Study_URL"].isna() & df["NCT_ID"].notna()
+        df.loc[mask, "Study_URL"] = "https://clinicaltrials.gov/study/" + df.loc[mask, "NCT_ID"]
+    else:
+        df["Study_URL"] = ""
+        mask = df["NCT_ID"].notna()
+        df.loc[mask, "Study_URL"] = "https://clinicaltrials.gov/study/" + df.loc[mask, "NCT_ID"]
+        
+    # Keep only the expected columns that are present, and add missing ones
+    for col in expected_cols:
+        if col not in df.columns:
+            df[col] = None
+            
+    return df[expected_cols]
+
 
 
