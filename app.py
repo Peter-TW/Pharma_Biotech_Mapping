@@ -745,10 +745,10 @@ with st.container(border=True):
     y_choice_key = "phase_iii_count" if y_axis_choice == "Active Phase III count" else "weighted_score"
 
     status_summary = load_clinical_status_summary()
-    df_bridge = build_bridge_chart_data(master, latest, status_summary)
+    df_bridge = build_bridge_chart_data(pool, latest, status_summary)
 
     # 4a Validation Row count check
-    if len(df_bridge) < 35 or len(df_bridge) > 50:
+    if lifecycle_choice == "All companies" and (len(df_bridge) < 35 or len(df_bridge) > 50):
         st.warning(f"Warning: Unexpected number of companies in bridge chart data: {len(df_bridge)} (expected 40-46). Some data might be missing.")
 
     # 4b Expected-zero verification
@@ -759,20 +759,25 @@ with st.container(border=True):
 
     # Build footnote texts for methodology/exclusion
     ez_df = load_expected_zero()
-    expected_zero_names = ", ".join(ez_df["Company_Name"].tolist())
-    all_master_uids = set(master["Unique_ID"].tolist())
+    pool_uids = set(pool["Unique_ID"].tolist())
+    ez_pool_df = ez_df[ez_df["Unique_ID"].isin(pool_uids)]
+    ez_count = len(ez_pool_df)
+    expected_zero_names = ", ".join(ez_pool_df["Company_Name"].tolist())
+    
     ez_uids = set(ez_df["Unique_ID"].tolist())
     included_uids = set(df_bridge["Unique_ID"].tolist())
-    missing_rd_uids = all_master_uids - ez_uids - included_uids
+    missing_rd_uids = pool_uids - ez_uids - included_uids
 
     missing_rd_names_list = sorted([
-        master[master["Unique_ID"] == m_uid]["Company Name"].iloc[0]
+        pool[pool["Unique_ID"] == m_uid]["Company Name"].iloc[0]
         for m_uid in missing_rd_uids
-        if not master[master["Unique_ID"] == m_uid].empty
+        if not pool[pool["Unique_ID"] == m_uid].empty
     ])
     missing_rd_names = ", ".join(missing_rd_names_list)
 
-    footnote_text = f"Showing {len(df_bridge)} of 50 companies. Excluded: 4 non-pharma businesses ({expected_zero_names} — animal health, royalty financier, and life-sciences tools)."
+    footnote_text = f"Showing {len(df_bridge)} eligible companies from the current lifecycle filter."
+    if ez_count > 0:
+        footnote_text += f" Excluded: {ez_count} non-pharma business{'es' if ez_count > 1 else ''} ({expected_zero_names} — animal health, royalty financier, and life-sciences tools)."
     if missing_rd_names:
         footnote_text += f" {len(missing_rd_names_list)} additional company/companies excluded due to missing latest-period R&D or market cap disclosure ({missing_rd_names})."
 
