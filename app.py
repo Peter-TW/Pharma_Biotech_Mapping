@@ -104,13 +104,17 @@ def field(value):
     return s
 
 
-def question_prompt(text):
-    """Small section guide showing the question a chart is designed to answer."""
+def question_prompt(text, compact_text=None, compact=False):
+    """Small section guide showing the question a chart is designed to answer.
+    
+    If compact is True and compact_text is provided, uses compact_text.
+    """
+    display_text = compact_text if (compact and compact_text) else text
     st.markdown(
         f'<div style="font-size:13px; color:#C9D1D9; margin:-2px 0 12px 0; '
         f'padding:8px 12px; border-radius:6px; background-color:#111827; '
         f'border-left:3px solid #00B4D8;">'
-        f'<b>Question answered:</b> {html.escape(text)}</div>',
+        f'<b>Question answered:</b> {html.escape(display_text)}</div>',
         unsafe_allow_html=True,
     )
 
@@ -153,7 +157,15 @@ def get_company_note(uid, scope="ALL"):
     )
 
 
-# ── Sidebar: lifecycle filter + company selector ────────────────────
+# ── Sidebar: view mode, lifecycle filter + company selector ──────────
+view_mode = st.sidebar.radio(
+    "View mode",
+    ["Overview mode", "Full detail mode"],
+    index=0,
+    help="Overview mode is optimized for mobile and quick review. Full detail mode shows the complete analytical charts and tables."
+)
+is_overview_mode = view_mode == "Overview mode"
+
 lifecycle_choice = st.sidebar.radio(
     "Lifecycle filter",
     ["All companies", "Full-cycle only", "Non-full-cycle only"],
@@ -338,20 +350,41 @@ with st.container(border=True):
             else "the broadest available Calendar Quarter because no quarter cleared "
                  "the 80% coverage floor"
         )
-        st.caption(
-            "Totals reflect the lifecycle filter. Market cap is summed at each "
-            "company's latest reported date (approximate). Revenue is the combined "
-            f"calendar {ref_q} {ref_year} figure — {coverage_phrase} — from "
-            f"{n_reporting} of {len(pool_ids)} companies. Fiscal-quarter labels are "
-            "grouped by Calendar_Quarter, while Period_Type is used only to exclude "
-            "FY, H1 and 9M rows from this quarterly sector view."
-        )
+        if is_overview_mode:
+            st.caption("Totals reflect the lifecycle filter. Market cap is summed at each company's latest reported date.")
+            with st.expander("Sector totals methodology"):
+                st.caption(
+                    "Totals reflect the lifecycle filter. Market cap is summed at each "
+                    "company's latest reported date (approximate). Revenue is the combined "
+                    f"calendar {ref_q} {ref_year} figure — {coverage_phrase} — from "
+                    f"{n_reporting} of {len(pool_ids)} companies. Fiscal-quarter labels are "
+                    "grouped by Calendar_Quarter, while Period_Type is used only to exclude "
+                    "FY, H1 and 9M rows from this quarterly sector view."
+                )
+        else:
+            st.caption(
+                "Totals reflect the lifecycle filter. Market cap is summed at each "
+                "company's latest reported date (approximate). Revenue is the combined "
+                f"calendar {ref_q} {ref_year} figure — {coverage_phrase} — from "
+                f"{n_reporting} of {len(pool_ids)} companies. Fiscal-quarter labels are "
+                "grouped by Calendar_Quarter, while Period_Type is used only to exclude "
+                "FY, H1 and 9M rows from this quarterly sector view."
+            )
     else:
-        st.caption(
-            "Totals reflect the lifecycle filter. Market cap is summed at each "
-            "company's latest reported date (approximate). No Q1-Q4 revenue rows "
-            "are available for the current lifecycle filter."
-        )
+        if is_overview_mode:
+            st.caption("Totals reflect the lifecycle filter. Market cap is summed at each company's latest reported date.")
+            with st.expander("Sector totals methodology"):
+                st.caption(
+                    "Totals reflect the lifecycle filter. Market cap is summed at each "
+                    "company's latest reported date (approximate). No Q1-Q4 revenue rows "
+                    "are available for the current lifecycle filter."
+                )
+        else:
+            st.caption(
+                "Totals reflect the lifecycle filter. Market cap is summed at each "
+                "company's latest reported date (approximate). No Q1-Q4 revenue rows "
+                "are available for the current lifecycle filter."
+            )
 
 
 # ── Sector Trend ────────────────────────────────────────────────────
@@ -518,7 +551,11 @@ with st.container(border=True):
 # ── Intelligence Map ────────────────────────────────────────────────
 with st.container(border=True):
     st.subheader("Intelligence Map")
-    question_prompt("How does this company position commercially and scientifically against the rest of the industry?")
+    question_prompt(
+        "How does this company position commercially and scientifically against the rest of the industry?",
+        "How does this company compare with peers?",
+        is_overview_mode
+    )
     plot_df = pool[["Unique_ID", "Company Name", "Commercial"]].merge(
         latest[["Unique_ID", "Q_Revenue", "rd_intensity", "Market_Cap_USD_M", "Period_Type"]],
         on="Unique_ID",
@@ -529,7 +566,46 @@ with st.container(border=True):
         how="left"
     )
     plot_df = plot_df.rename(columns={"Commercial": "is_commercial"})
-    render_intelligence_map(plot_df, uid)
+    
+    if is_overview_mode:
+        sel_map = plot_df[plot_df["Unique_ID"] == uid]
+        if not sel_map.empty:
+            row_map = sel_map.iloc[0]
+            pos = row_map.get("positioning", "Unclassified")
+            rev = fmt_money(row_map.get("Q_Revenue"))
+            rdi = fmt_pct(row_map.get("rd_intensity"))
+            mcap = fmt_money(row_map.get("Market_Cap_USD_M"))
+            stage = "Commercial-stage" if row_map.get("is_commercial") else "Pipeline-stage"
+            
+            st.markdown(
+                f'<div style="background-color:#1A1F2B; border:1px solid #2A2E3A; '
+                f'border-radius:8px; padding:14px 16px; margin-bottom:15px; line-height:1.5;">'
+                f'📊 &nbsp;<b>{selected_name} Summary:</b><br/>'
+                f'• <b>Positioning:</b> {pos}<br/>'
+                f'• <b>Revenue:</b> {rev}<br/>'
+                f'• <b>R&D Intensity:</b> {rdi}<br/>'
+                f'• <b>Market Cap:</b> {mcap}<br/>'
+                f'• <b>Commercial Status:</b> {stage}<br/>'
+                f'<span style="color:#A3B3C2; font-size:12px; display:inline-block; margin-top:8px;">'
+                f'<i>{selected_name} is positioned as {pos}. R&D intensity is {rdi}; revenue scale is {rev}; market cap is {mcap}.</i>'
+                f'</span>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+            
+        with st.expander("Show full Intelligence Map"):
+            render_intelligence_map(plot_df, uid, compact=True)
+            st.markdown(
+                '<div style="font-size:12px; color:#8C9BA5; padding:6px 2px;">'
+                'Bubble size: log-scaled market cap. X-axis uses reported quarterly '
+                'revenue where available; FY reporters are visually annualised ÷4 for '
+                'map placement only and are not written back as synthetic quarters. '
+                'Companies above 100% R&D intensity are shown clamped at the top edge (100%).'
+                '</div>',
+                unsafe_allow_html=True
+            )
+    else:
+        render_intelligence_map(plot_df, uid, compact=False)
     
     map_label, map_tip = get_company_note(uid, "INTELLIGENCE_MAP")
     if map_label:
@@ -538,7 +614,11 @@ with st.container(border=True):
 # ── Strategic Posture Quadrant ───────────────────────────────────────
 with st.container(border=True):
     st.subheader("Strategic Posture Quadrant")
-    question_prompt("Does this company have enough financial firepower to support its scientific investment?")
+    question_prompt(
+        "Does this company have enough financial firepower to support its scientific investment?",
+        "Does this company have the cash buffer to support R&D?",
+        is_overview_mode
+    )
     posture_df = pool[["Unique_ID", "Company Name", "Commercial"]].merge(
         latest[[
             "Unique_ID", "Q_Revenue", "Q_RD", "Q_Cash",
@@ -556,13 +636,72 @@ with st.container(border=True):
         how="left"
     )
 
-    render_strategic_posture_quadrant(posture_df, uid)
+    if is_overview_mode:
+        sel_pos = posture_df[posture_df["Unique_ID"] == uid]
+        if not sel_pos.empty:
+            row_pos = sel_pos.iloc[0]
+            cash_mktcap = fmt_pct(row_pos.get("cash_to_mktcap"))
+            rdi = fmt_pct(row_pos.get("rd_intensity"))
+            pos = row_pos.get("positioning", "Unclassified")
+            
+            # Median values from companies currently in view
+            required_cols = ["cash_to_mktcap", "rd_intensity", "Market_Cap_USD_M"]
+            valid_df = posture_df.dropna(subset=required_cols).copy()
+            valid_df = valid_df[(valid_df["cash_to_mktcap"] >= 0) & (valid_df["Market_Cap_USD_M"] > 0)]
+            
+            median_cash = valid_df["cash_to_mktcap"].median() if not valid_df.empty else 0.0
+            median_rd = valid_df["rd_intensity"].median() if not valid_df.empty else 0.0
+            
+            comp_cash_val = row_pos.get("cash_to_mktcap", 0.0)
+            comp_rd_val = row_pos.get("rd_intensity", 0.0)
+            
+            if pd.isna(comp_cash_val) or comp_cash_val is None:
+                comp_cash_val = 0.0
+            if pd.isna(comp_rd_val) or comp_rd_val is None:
+                comp_rd_val = 0.0
+                
+            cash_relation = "above" if comp_cash_val >= median_cash else "below"
+            rd_relation = "above" if comp_rd_val >= median_rd else "below"
+            
+            st.markdown(
+                f'<div style="background-color:#1A1F2B; border:1px solid #2A2E3A; '
+                f'border-radius:8px; padding:14px 16px; margin-bottom:15px; line-height:1.5;">'
+                f'🎯 &nbsp;<b>{selected_name} Posture Summary:</b><br/>'
+                f'• <b>Positioning:</b> {pos}<br/>'
+                f'• <b>Cash / Market Cap:</b> {cash_mktcap}<br/>'
+                f'• <b>R&D Intensity:</b> {rdi}<br/>'
+                f'<span style="color:#A3B3C2; font-size:12px; display:inline-block; margin-top:8px;">'
+                f'<i>Compared with companies currently in view, this company is {cash_relation} median cash buffer ({fmt_pct(median_cash)}) '
+                f'and {rd_relation} median R&D intensity ({fmt_pct(median_rd)}).</i>'
+                f'</span>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+            
+        with st.expander("Show Strategic Posture chart"):
+            render_strategic_posture_quadrant(posture_df, uid, compact=True)
+            st.markdown(
+                '<div style="font-size:12px; color:#8C9BA5; padding:6px 2px;">'
+                'Strategic Posture compares R&D intensity with cash buffer relative to '
+                'market value. Dashed lines show the median of companies currently in '
+                'view, so quadrants are relative to the selected lifecycle filter. Bubble '
+                'size is log-scaled market cap. Companies above 100% R&D intensity are '
+                'shown clamped at the top edge (100%).'
+                '</div>',
+                unsafe_allow_html=True
+            )
+    else:
+        render_strategic_posture_quadrant(posture_df, uid, compact=False)
 
 
 # ── Clinical Productivity vs. R&D Spend ──────────────────────────────
 with st.container(border=True):
     st.subheader("Clinical Productivity vs. R&D Spend")
-    question_prompt("Which companies show the largest late-stage clinical footprint relative to reported R&D investment?")
+    question_prompt(
+        "Which companies show the largest late-stage clinical footprint relative to reported R&D investment?",
+        "Which companies have the largest late-stage footprint relative to R&D spend?",
+        is_overview_mode
+    )
 
     # Y-axis toggle
     y_axis_choice = st.radio(
@@ -588,20 +727,14 @@ with st.container(border=True):
         if ez_uid in df_bridge["Unique_ID"].values:
             st.warning(f"Warning: Expected-zero company {ez_uid} was not correctly filtered out of the bridge chart.")
 
-    # Render chart
-    render_bridge_chart(df_bridge, y_choice_key, selected_unique_id=uid)
-
-    # 3g Footnote construct
+    # Build footnote texts for methodology/exclusion
     ez_df = load_expected_zero()
     expected_zero_names = ", ".join(ez_df["Company_Name"].tolist())
-
-    # Find companies excluded for missing R&D or Market Cap
     all_master_uids = set(master["Unique_ID"].tolist())
     ez_uids = set(ez_df["Unique_ID"].tolist())
     included_uids = set(df_bridge["Unique_ID"].tolist())
     missing_rd_uids = all_master_uids - ez_uids - included_uids
 
-    # Map missing R&D UIDs to names
     missing_rd_names_list = sorted([
         master[master["Unique_ID"] == m_uid]["Company Name"].iloc[0]
         for m_uid in missing_rd_uids
@@ -613,24 +746,90 @@ with st.container(border=True):
     if missing_rd_names:
         footnote_text += f" {len(missing_rd_names_list)} additional company/companies excluded due to missing latest-period R&D or market cap disclosure ({missing_rd_names})."
 
-    st.caption(footnote_text)
-
-    # 3h Methodology Disclaimer
-    st.caption(
-        "Bubble size is log-scaled market cap. X-axis uses latest reported R&D annualized from the company’s latest financial period. "
-        "Y-axis uses owned ClinicalTrials.gov records in active-pipeline statuses only. "
-        "Counts reflect registry exposure, not probability of success, asset quality, or valuation upside."
-    )
-    st.caption(
-        "ClinicalTrials.gov does not cover every non-US registry-only trial, so region-only programs may be absent."
-    )
-    st.caption(
-        "Companies with generics-led or specialty-branded business models "
-        "(e.g., Sun Pharmaceutical Industries) typically have lower R&D "
-        "Intensity than discovery-led peers and will appear far to the "
-        "left on this chart. This reflects business-model differences, "
-        "not pipeline quality or commercial weakness."
-    )
+    if is_overview_mode:
+        sel_bridge = df_bridge[df_bridge["Unique_ID"] == uid]
+        if not sel_bridge.empty:
+            row_br = sel_bridge.iloc[0]
+            ann_rd = fmt_money(row_br.get("RD_Annualized_USD_M"))
+            p3_count = int(row_br.get("Phase_III_Active_Count", 0))
+            pipe_count = int(row_br.get("Active_Pipeline_Count", 0))
+            weighted_score = float(row_br.get("Phase_Weighted_Score_Active", 0.0))
+            mcap = fmt_money(row_br.get("Market_Cap_USD_M"))
+            pos = row_br.get("Positioning", "Unclassified")
+            
+            # Compute Ranks
+            df_bridge_sorted_p3 = df_bridge.sort_values(by="Phase_III_Active_Count", ascending=False).reset_index(drop=True)
+            p3_rank = df_bridge_sorted_p3[df_bridge_sorted_p3["Unique_ID"] == uid].index[0] + 1
+            
+            df_bridge_sorted_wt = df_bridge.sort_values(by="Phase_Weighted_Score_Active", ascending=False).reset_index(drop=True)
+            wt_rank = df_bridge_sorted_wt[df_bridge_sorted_wt["Unique_ID"] == uid].index[0] + 1
+            
+            total_comps = len(df_bridge)
+            
+            st.markdown(
+                f'<div style="background-color:#1A1F2B; border:1px solid #2A2E3A; '
+                f'border-radius:8px; padding:14px 16px; margin-bottom:15px; line-height:1.5;">'
+                f'📈 &nbsp;<b>{selected_name} Clinical Productivity Summary:</b><br/>'
+                f'• <b>Positioning:</b> {pos}<br/>'
+                f'• <b>Annualized R&D Spend:</b> {ann_rd}<br/>'
+                f'• <b>Owned Active Phase III Trials:</b> {p3_count}<br/>'
+                f'• <b>Owned Active Pipeline Count:</b> {pipe_count}<br/>'
+                f'• <b>Phase-Weighted Active Exposure:</b> {weighted_score:.1f}<br/>'
+                f'• <b>Market Cap:</b> {mcap}<br/>'
+                f'<span style="color:#A3B3C2; font-size:12px; display:inline-block; margin-top:8px;">'
+                f'🏆 &nbsp;<b>Peer Ranking Context (out of {total_comps} companies in view):</b><br/>'
+                f'• <b>Owned Active Phase III Trials Rank:</b> #{p3_rank} of {total_comps}<br/>'
+                f'• <b>Phase-Weighted Active Exposure Rank:</b> #{wt_rank} of {total_comps}'
+                f'</span>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+        else:
+            st.info(f"{selected_name} is excluded from the R&D/clinical productivity benchmarking (expected zero or missing R&D/market cap disclosure).")
+            
+        st.write(f"**Top 5 Peers by {y_axis_choice}**")
+        y_sort_col = "Phase_III_Active_Count" if y_choice_key == "phase_iii_count" else "Phase_Weighted_Score_Active"
+        top5_raw = df_bridge.sort_values(by=y_sort_col, ascending=False).head(5)
+        top5_df = pd.DataFrame()
+        top5_df["Company"] = top5_raw["Company_Name"]
+        top5_df["Annualized R&D Spend"] = top5_raw["RD_Annualized_USD_M"].apply(fmt_money)
+        top5_df["Active Phase III"] = top5_raw["Phase_III_Active_Count"].astype(int)
+        top5_df["Weighted Exposure"] = top5_raw["Phase_Weighted_Score_Active"].round(1)
+        top5_df["Positioning"] = top5_raw["Positioning"]
+        
+        st.dataframe(top5_df, use_container_width=True, hide_index=True)
+        
+        with st.expander("Show full Clinical Productivity chart"):
+            render_bridge_chart(df_bridge, y_choice_key, selected_unique_id=uid)
+            
+        st.caption("Counts reflect registry exposure, not probability of success, asset quality, or valuation upside.")
+        with st.expander("Methodology and exclusion notes"):
+            st.write(footnote_text)
+            st.write(
+                "Bubble size is log-scaled market cap. X-axis uses latest reported R&D annualized from the company’s latest financial period. "
+                "Y-axis uses owned ClinicalTrials.gov records in active-pipeline statuses only. "
+                "Counts reflect registry exposure, not probability of success, asset quality, or valuation upside."
+            )
+            st.write("ClinicalTrials.gov does not cover every non-US registry-only trial, so region-only programs may be absent.")
+    else:
+        render_bridge_chart(df_bridge, y_choice_key, selected_unique_id=uid)
+        st.caption(footnote_text)
+        st.caption(
+            "Bubble size is log-scaled market cap. X-axis uses latest reported R&D annualized from the company’s latest financial period. "
+            "Y-axis uses owned ClinicalTrials.gov records in active-pipeline statuses only. "
+            "Counts reflect registry exposure, not probability of success, asset quality, or valuation upside."
+        )
+        st.caption(
+            "ClinicalTrials.gov does not cover every non-US registry-only trial, so region-only programs may be absent."
+        )
+    if not is_overview_mode:
+        st.caption(
+            "Companies with generics-led or specialty-branded business models "
+            "(e.g., Sun Pharmaceutical Industries) typically have lower R&D "
+            "Intensity than discovery-led peers and will appear far to the "
+            "left on this chart. This reflects business-model differences, "
+            "not pipeline quality or commercial weakness."
+        )
 
 
 # ── Header ──────────────────────────────────────────────────────────
@@ -682,12 +881,16 @@ with st.container(border=True):
 with st.container(border=True):
     st.subheader("Lifecycle Footprint")
     lc_row = lifecycle_df[lifecycle_df["Unique_ID"] == uid].iloc[0]
-    render_lifecycle_strip(lc_row)
+    render_lifecycle_strip(lc_row, compact=is_overview_mode)
 
 # ── Financial Snapshot ──────────────────────────────────────────────
 with st.container(border=True):
     st.subheader("Financial Snapshot")
-    question_prompt("What is this company’s latest reported financial position?")
+    question_prompt(
+        "What is this company’s latest reported financial position?",
+        "What is this company’s latest financial position?",
+        is_overview_mode
+    )
     st.markdown(
         '<span style="background:rgba(0,180,216,0.16); border:1px solid #00B4D8; '
         'border-radius:6px; padding:3px 10px; font-size:13px; color:#E6E9EF;">'
@@ -725,7 +928,11 @@ with st.container(border=True):
 # ── Clinical Trial Footprint ─────────────────────────────────────────
 with st.container(border=True):
     st.subheader("Clinical Trial Footprint")
-    question_prompt("What active, late-stage, and risk-flagged ClinicalTrials.gov records support this company’s clinical footprint?")
+    question_prompt(
+        "What active, late-stage, and risk-flagged ClinicalTrials.gov records support this company’s clinical footprint?",
+        "What clinical-trial records support this company?",
+        is_overview_mode
+    )
 
     # Load data
     try:
@@ -761,8 +968,6 @@ with st.container(border=True):
             
             # Show KPI cards
             if summary_row is not None:
-                k1, k2, k3, k4, k5, k6 = st.columns(6)
-                
                 # Retrieve metrics safely, default to 0 if NaN/None
                 def get_kpi_val(col_name):
                     val = summary_row.get(col_name, 0)
@@ -770,13 +975,53 @@ with st.container(border=True):
                         return 0
                     return int(val)
                 
-                k1.metric("Owned Active Pipeline", f"{get_kpi_val('Owned_Active_Pipeline_Count')}")
-                k2.metric("Owned Recruiting", f"{get_kpi_val('Owned_Recruiting_Count')}")
-                k3.metric("Owned Active Not Recruiting", f"{get_kpi_val('Owned_Active_Not_Recruiting_Count')}")
-                k4.metric("Owned Operational Risk", f"{get_kpi_val('Owned_Operational_Risk_Count')}")
-                k5.metric("Owned Phase III", f"{get_kpi_val('Owned_Phase_III_Count_Exclusive')}")
-                k6.metric("Participated Trials", f"{get_kpi_val('Participated_All_Trials')}")
+                v_pipeline = get_kpi_val('Owned_Active_Pipeline_Count')
+                v_recruiting = get_kpi_val('Owned_Recruiting_Count')
+                v_active_not_recruiting = get_kpi_val('Owned_Active_Not_Recruiting_Count')
+                v_risk = get_kpi_val('Owned_Operational_Risk_Count')
+                v_phase3 = get_kpi_val('Owned_Phase_III_Count_Exclusive')
+                v_participated = get_kpi_val('Participated_All_Trials')
                 
+                if is_overview_mode:
+                    # 3x2 Grid for Mobile/Overview mode
+                    st.markdown(
+                        f'<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">'
+                        f'  <div style="background-color: #1A1F2B; border: 1px solid #2A2E3A; border-radius: 8px; padding: 10px 12px;">'
+                        f'    <div style="font-size: 12px; color: #8A91A0; font-weight: 500;">Active Pipeline</div>'
+                        f'    <div style="font-size: 24px; font-weight: 700; color: #00B4D8; margin-top: 2px;">{v_pipeline}</div>'
+                        f'  </div>'
+                        f'  <div style="background-color: #1A1F2B; border: 1px solid #2A2E3A; border-radius: 8px; padding: 10px 12px;">'
+                        f'    <div style="font-size: 12px; color: #8A91A0; font-weight: 500;">Recruiting</div>'
+                        f'    <div style="font-size: 24px; font-weight: 700; color: #E6E9EF; margin-top: 2px;">{v_recruiting}</div>'
+                        f'  </div>'
+                        f'  <div style="background-color: #1A1F2B; border: 1px solid #2A2E3A; border-radius: 8px; padding: 10px 12px;">'
+                        f'    <div style="font-size: 12px; color: #8A91A0; font-weight: 500;">Active Not Recruiting</div>'
+                        f'    <div style="font-size: 24px; font-weight: 700; color: #E6E9EF; margin-top: 2px;">{v_active_not_recruiting}</div>'
+                        f'  </div>'
+                        f'  <div style="background-color: #1A1F2B; border: 1px solid #2A2E3A; border-radius: 8px; padding: 10px 12px;">'
+                        f'    <div style="font-size: 12px; color: #8A91A0; font-weight: 500;">Risk</div>'
+                        f'    <div style="font-size: 24px; font-weight: 700; color: #E6E9EF; margin-top: 2px;">{v_risk}</div>'
+                        f'  </div>'
+                        f'  <div style="background-color: #1A1F2B; border: 1px solid #2A2E3A; border-radius: 8px; padding: 10px 12px;">'
+                        f'    <div style="font-size: 12px; color: #8A91A0; font-weight: 500;">Phase III</div>'
+                        f'    <div style="font-size: 24px; font-weight: 700; color: #E6E9EF; margin-top: 2px;">{v_phase3}</div>'
+                        f'  </div>'
+                        f'  <div style="background-color: #1A1F2B; border: 1px solid #2A2E3A; border-radius: 8px; padding: 10px 12px;">'
+                        f'    <div style="font-size: 12px; color: #8A91A0; font-weight: 500;">Participated</div>'
+                        f'    <div style="font-size: 24px; font-weight: 700; color: #E6E9EF; margin-top: 2px;">{v_participated}</div>'
+                        f'  </div>'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+                else:
+                    k1, k2, k3, k4, k5, k6 = st.columns(6)
+                    k1.metric("Owned Active Pipeline", f"{v_pipeline}")
+                    k2.metric("Owned Recruiting", f"{v_recruiting}")
+                    k3.metric("Owned Active Not Recruiting", f"{v_active_not_recruiting}")
+                    k4.metric("Owned Operational Risk", f"{v_risk}")
+                    k5.metric("Owned Phase III", f"{v_phase3}")
+                    k6.metric("Participated Trials", f"{v_participated}")
+            
             # Scope toggle
             scope_choice = st.radio(
                 "Clinical record scope",
@@ -818,7 +1063,7 @@ with st.container(border=True):
             limit_choice = f3.selectbox(
                 "Rows to show",
                 options=["10", "25", "50", "All"],
-                index=1,
+                index=0 if is_overview_mode else 1,
                 key="clinical_rows_limit_select"
             )
             
@@ -863,8 +1108,9 @@ with st.container(border=True):
                 display_df["Brief Title"] = display_df_raw["Brief_Title"].fillna("")
                 display_df["Status"] = display_df_raw["Status_Bucket"].fillna("")
                 display_df["Phase"] = display_df_raw["Phase_Bucket_Exclusive"].fillna("")
-                display_df["Sponsor Role"] = display_df_raw["Sponsor_Match_Type"].fillna("")
-                display_df["Ownership Context"] = display_df_raw["Ownership_Context"].fillna("")
+                if not is_overview_mode:
+                    display_df["Sponsor Role"] = display_df_raw["Sponsor_Match_Type"].fillna("")
+                    display_df["Ownership Context"] = display_df_raw["Ownership_Context"].fillna("")
                 
                 # Format date nicely
                 date_vals = pd.to_datetime(display_df_raw["Last_Update_Submit_Date"])
@@ -878,11 +1124,12 @@ with st.container(border=True):
                     "Brief Title": st.column_config.TextColumn("Brief Title", width="large"),
                     "Status": st.column_config.TextColumn("Status", width="medium"),
                     "Phase": st.column_config.TextColumn("Phase", width="small"),
-                    "Sponsor Role": st.column_config.TextColumn("Sponsor Role", width="medium"),
-                    "Ownership Context": st.column_config.TextColumn("Ownership Context", width="medium"),
                     "Last Update": st.column_config.TextColumn("Last Update", width="small"),
                     "Study Link": st.column_config.LinkColumn("Study Link", display_text="Open NCT", width="small")
                 }
+                if not is_overview_mode:
+                    col_config["Sponsor Role"] = st.column_config.TextColumn("Sponsor Role", width="medium")
+                    col_config["Ownership Context"] = st.column_config.TextColumn("Ownership Context", width="medium")
                 
                 st.dataframe(
                     display_df,
@@ -907,15 +1154,28 @@ with st.container(border=True):
                 "Region-only studies on jRCT, CTIS/EUCTR, or ChiCTR may be absent."
             )
             
-            st.markdown(
-                f'<div style="font-size:12px; color:#8C9BA5; margin-top:15px; padding:10px 14px; '
-                f'border-radius:6px; background-color:#161B22; border:1px solid #21262D; line-height:1.6;">'
-                f'📢 &nbsp;<b>Attribution Note:</b> {main_note}<br/>'
-                f'🔍 &nbsp;<b>Scope Context:</b> {scope_note}<br/>'
-                f'🌎 &nbsp;<b>Geographic Coverage:</b> {non_us_note}'
-                f'</div>',
-                unsafe_allow_html=True
-            )
+            if is_overview_mode:
+                st.caption("Counts reflect ClinicalTrials.gov registry exposure, not success probability.")
+                with st.expander("Clinical data caveats"):
+                    st.markdown(
+                        f'<div style="font-size:12px; color:#8C9BA5; padding:10px 14px; '
+                        f'border-radius:6px; background-color:#161B22; border:1px solid #21262D; line-height:1.6;">'
+                        f'📢 &nbsp;<b>Attribution Note:</b> {main_note}<br/>'
+                        f'🔍 &nbsp;<b>Scope Context:</b> {scope_note}<br/>'
+                        f'🌎 &nbsp;<b>Geographic Coverage:</b> {non_us_note}'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+            else:
+                st.markdown(
+                    f'<div style="font-size:12px; color:#8C9BA5; margin-top:15px; padding:10px 14px; '
+                    f'border-radius:6px; background-color:#161B22; border:1px solid #21262D; line-height:1.6;">'
+                    f'📢 &nbsp;<b>Attribution Note:</b> {main_note}<br/>'
+                    f'🔍 &nbsp;<b>Scope Context:</b> {scope_note}<br/>'
+                    f'🌎 &nbsp;<b>Geographic Coverage:</b> {non_us_note}'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
 
 
 # ── Clinical Change Feed ──────────────────────────────────────────────
@@ -949,12 +1209,15 @@ with st.container(border=True):
             st.info("No clinical change events detected for this company.")
         else:
             # Apply default filter
+            limit_len = 5 if is_overview_mode else 25
             if "Window_90D" in company_events.columns:
                 filtered_events = company_events[company_events["Window_90D"] == True].copy()
                 if filtered_events.empty:
-                    filtered_events = company_events.head(25)
+                    filtered_events = company_events.head(limit_len)
+                elif is_overview_mode:
+                    filtered_events = filtered_events.head(limit_len)
             else:
-                filtered_events = company_events.head(25)
+                filtered_events = company_events.head(limit_len)
                 
             if filtered_events.empty:
                 st.info("No change events in the last 90 days.")
@@ -1048,14 +1311,17 @@ with st.container(border=True):
             temp_updates = registry_inv.sort_values(by="Last_Update_Submit_Date", ascending=False)
             
         # Row limit control
-        limit_select = st.radio(
-            "Rows to show (updates)",
-            options=["10", "25", "50"],
-            index=0,
-            horizontal=True,
-            key="recent_updates_limit"
-        )
-        limit_val = int(limit_select)
+        if is_overview_mode:
+            limit_val = 5
+        else:
+            limit_select = st.radio(
+                "Rows to show (updates)",
+                options=["10", "25", "50"],
+                index=0,
+                horizontal=True,
+                key="recent_updates_limit"
+            )
+            limit_val = int(limit_select)
         
         # Display fallback note if active
         if show_fallback_note:
