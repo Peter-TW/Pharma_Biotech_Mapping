@@ -404,8 +404,8 @@ with st.container(border=True):
 
     focus_ranges = {
         "R&D Intensity": (0.15, 0.25),
-        "Cash / Market Cap": (0.00, 0.10),
-        "SG&A Intensity": (0.15, 0.35),
+        "Cash / Market Cap": (0.00, 0.05),
+        "SG&A Intensity": (0.20, 0.30),
     }
     y_axis_view = st.radio(
         "Y-axis view",
@@ -456,7 +456,7 @@ with st.container(border=True):
                     y_max_eff = max(0.10, data_max * 1.15)
                     y_scale = alt.Scale(domain=[y_min_eff, y_max_eff])
                     focus_expanded = False
-            else:
+            elif ratio_metric == "R&D Intensity":
                 if y_axis_view == "Focus range":
                     if focus_covers:
                         y_scale = alt.Scale(domain=[focus_min, focus_max])
@@ -467,8 +467,25 @@ with st.container(border=True):
                         y_scale = alt.Scale(domain=[y_min_eff, y_max_eff])
                         focus_expanded = True
                 else:
-                    # Full range = include 0 to show absolute magnitude.
-                    y_scale = alt.Scale(zero=True)
+                    y_min_eff = 0.0
+                    y_max_eff = max(0.35, data_max * 1.15)
+                    y_scale = alt.Scale(domain=[y_min_eff, y_max_eff])
+                    focus_expanded = False
+            elif ratio_metric == "SG&A Intensity":
+                if y_axis_view == "Focus range":
+                    if focus_covers:
+                        y_scale = alt.Scale(domain=[focus_min, focus_max])
+                    else:
+                        pad = max((data_max - data_min) * 0.1, 0.005)
+                        y_min_eff = min(focus_min, data_min - pad)
+                        y_max_eff = max(focus_max, data_max + pad)
+                        y_scale = alt.Scale(domain=[y_min_eff, y_max_eff])
+                        focus_expanded = True
+                else:
+                    y_min_eff = 0.0
+                    y_max_eff = max(0.40, data_max * 1.15)
+                    y_scale = alt.Scale(domain=[y_min_eff, y_max_eff])
+                    focus_expanded = False
 
             chart = (
                 alt.Chart(metric_df)
@@ -532,16 +549,16 @@ with st.container(border=True):
             if y_axis_view == "Focus range":
                 if focus_expanded:
                     st.caption(
-                        f"Y-axis expanded to {y_min_eff:.1%}–{y_max_eff:.1%} because some "
-                        f"values fall outside the default {focus_min:.0%}–{focus_max:.0%} focus band "
-                        f"for this lifecycle filter. The underlying calculation is unchanged; "
-                        f"switch to Full range to see absolute magnitude from 0."
+                        "Y-axis expanded to include all visible data for this lifecycle filter. "
+                        "The underlying calculation is unchanged."
                     )
                 else:
                     st.caption(
                         f"Y-axis focus range: {focus_min:.0%}–{focus_max:.0%}. "
                         "This zoom makes small sector-level changes easier to see and does not change the underlying calculation."
                     )
+            else:
+                st.caption("Full range starts from zero to show absolute scale.")
 
             # Priority 2: "What this means / does not mean" Microcopy
             microcopy_map = {
@@ -810,18 +827,19 @@ with st.container(border=True):
         top5_df["Weighted Exposure"] = top5_raw["Phase_Weighted_Score_Active"].round(1)
         top5_df["Positioning"] = top5_raw["Positioning"]
         
-        st.dataframe(
-            top5_df,
-            column_config={
-                "Company": st.column_config.TextColumn("Company", alignment="left"),
-                "Annualized R&D Spend": st.column_config.TextColumn("Annualized R&D Spend", alignment="center"),
-                "Active Phase III": st.column_config.NumberColumn("Active Phase III", format="%d", alignment="center"),
-                "Weighted Exposure": st.column_config.NumberColumn("Weighted Exposure", format="%.1f", alignment="center"),
-                "Positioning": st.column_config.TextColumn("Positioning", alignment="left"),
-            },
-            use_container_width=True,
-            hide_index=True
-        )
+        try:
+            styled = top5_df.style.set_properties(
+                subset=["Annualized R&D Spend", "Active Phase III", "Weighted Exposure"],
+                **{"text-align": "center"}
+            ).set_properties(
+                subset=["Company", "Positioning"],
+                **{"text-align": "left"}
+            ).set_table_styles([
+                {"selector": "th", "props": [("text-align", "center")]}
+            ])
+            st.dataframe(styled, use_container_width=True, hide_index=True)
+        except Exception:
+            st.dataframe(top5_df, use_container_width=True, hide_index=True)
         
         with st.expander("Show full Clinical Productivity chart"):
             render_bridge_chart(df_bridge, y_choice_key, selected_unique_id=uid)
