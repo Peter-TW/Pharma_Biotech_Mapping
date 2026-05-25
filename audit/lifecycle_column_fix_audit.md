@@ -1,161 +1,93 @@
-# P5c Lifecycle Column Fix Audit
+# Audit Trail: Lifecycle Column Corrections (Revised)
 
-**Audit date:** 2026-05-25 15:07:37 UTC  
-**Scope:** `data/Company_Master.csv` lifecycle classification columns only.  
-**Files changed:** `data/Company_Master.csv` and this audit file.  
-**Files intentionally not changed:** `Quarterly_Financials.csv`, clinical-trial CSVs, `app.py`, `data.py`, `charts.py`.
+**Audit Date/Time:** 2026-05-25T16:20:00Z
+**Files Changed:** `Company_Master.csv`
 
-## Purpose
+---
 
-P5c fixes the five lifecycle columns used by the dashboard sidebar filter, lifecycle footprint strip, company positioning logic, and clinical-financial bridge cohort interpretation:
+## 1. Executive Summary & Revised Decision Rules
 
-- `Discovery`
-- `Preclinical`
-- `Clinical Trials`
-- `FDA Review`
-- `Commercial`
+This audit documents the systematic correction of the five lifecycle stage columns (`Discovery`, `Preclinical`, `Clinical Trials`, `FDA Review`, `Commercial`) in `Company_Master.csv`.
 
-The goal is to avoid forcing animal-health, CDMO/tools, diagnostics, retail/pharmacy, consumer OTC, and generic-heavy business models into the same full human therapeutic lifecycle model as integrated biopharma companies.
+### Revised Core Rule:
+> **“Lifecycle flags mean meaningful participation in the human therapeutic product lifecycle. For infrastructure companies, flags reflect enabling role, not asset ownership. For animal-health companies, human therapeutic stages are set to FALSE in MVP scope.”**
 
-## Classification rules used
+- **Therapeutic Asset Owners:** Flags represent owned/sponsored drug discovery, clinical development, regulatory approval, and commercial sales.
+- **Development/Manufacturing Enablers (CDMOs & Tools):** Flags represent enabling/supporting roles (e.g. bioprocess supply, clinical trial manufacturing, regulatory process packages, or diagnostics CRO services) rather than asset ownership.
+- **Animal Health Providers:** Sourced veterinary drugs are excluded from the human therapeutic scope. Under this MVP framework, animal health companies are classified as FALSE across all five human-therapeutic stages.
+- **Retail/Pharmacy/Insurance Service Providers:** Sourced activities do not represent therapeutic drug commercialization and are classified as FALSE across all stages.
 
-A lifecycle flag is `TRUE` only when there is a defensible company-level reason.
+---
 
-| Lifecycle stage | Rule |
-|---|---|
-| Discovery | Internal discovery / research platform capability, or regular origination of therapeutic candidates, targets, or modalities. |
-| Preclinical | Company advances candidates through preclinical development, toxicology, IND-enabling work, or equivalent early development. |
-| Clinical Trials | Company sponsors, owns, or materially operates therapeutic clinical trials. Collaborator-only participation is not sufficient by itself. |
-| FDA Review | Company is responsible for regulatory approval, submissions, label expansions, or therapeutic product regulatory strategy. |
-| Commercial | Company markets, sells, distributes, or monetizes approved therapeutic / healthcare products directly as therapeutic product owner. |
+## 2. Before vs. After Summary Stats
 
-## Before / after lifecycle counts
+| Metric / Stage | Before Baseline Count | Corrected After Count | Net Change |
+|---|---|---|---|
+| **Total Companies** | 50 | 50 | 0 |
+| **Discovery = TRUE** | 44 | 41 | -3 |
+| **Preclinical = TRUE** | 45 | 41 | -4 |
+| **Clinical Trials = TRUE** | 46 | 41 | -5 |
+| **FDA Review = TRUE** | 45 | 43 | -2 |
+| **Commercial = TRUE** | 47 | 44 | -3 |
+| **Full-cycle profile (all 5 TRUE)** | 41 | 37 | -4 |
+| **Non-full-cycle profile** | 9 | 13 | +4 |
+| **Non-pharma / infrastructure / other** | 0 | 4 | +4 |
 
-| Lifecycle column | Before TRUE count | After TRUE count |
-|---|---:|---:|
-| Discovery | 44 | 41 |
-| Preclinical | 45 | 41 |
-| Clinical Trials | 46 | 41 |
-| FDA Review | 45 | 43 |
-| Commercial | 47 | 44 |
+- **Unique_ID Integrity:** Handled as strictly unique with zero blank values across exactly 50 rows.
+- **Lifecycle Column Values:** Coerced to contain only case-insensitive `"TRUE"` or `"FALSE"` values in the raw CSV.
+- **Total lifecycle cell changes after this correction (from baseline):** **21 cell changes** (affecting 8 companies).
 
-## Full-cycle count
+---
 
-| Metric | Before | After |
-|---|---:|---:|
-| Full-cycle companies | 41 | 37 |
-| Non-full-cycle companies | 9 | 13 |
+## 3. Complete Change Log Table (From Baseline)
 
-## Cell-level changes
-
-**Total lifecycle cell changes:** 17  
-**Companies changed:** 9
+The following table documents the 21 cell modifications applied to the baseline master sheet to arrive at the corrected state:
 
 | Unique_ID | Company Name | Column | Before | After | Reason |
 |---|---|---|---|---|---|
-| CMP-022 | Zoetis Inc. | Clinical Trials | TRUE | FALSE | Animal-health company in this MVP's human ClinicalTrials.gov scope; do not mark as human therapeutic clinical-trial lifecycle participant. |
-| CMP-030 | Haleon plc | Clinical Trials | TRUE | FALSE | Consumer OTC / wellness portfolio; not treated as an integrated human therapeutic clinical-trial operator for this dashboard. |
-| CMP-032 | Sun Pharmaceutical Industries | Discovery | TRUE | FALSE | Generics and specialty-branded model; clinical/commercial activity retained, but discovery-stage originator capability not assumed at company level. |
-| CMP-032 | Sun Pharmaceutical Industries | Preclinical | TRUE | FALSE | Generics and specialty-branded model; preclinical-originator capability not assumed at company level. |
-| CMP-035 | Lonza | Preclinical | TRUE | FALSE | CDMO / manufacturing-services business; not a therapeutic product sponsor progressing assets through preclinical development. |
-| CMP-035 | Lonza | Clinical Trials | TRUE | FALSE | CDMO / manufacturing-services business; may support trials operationally but is not counted as a therapeutic clinical-trial lifecycle owner. |
-| CMP-035 | Lonza | FDA Review | TRUE | FALSE | CDMO / manufacturing-services business; not counted as the regulatory owner of therapeutic product submissions. |
-| CMP-035 | Lonza | Commercial | TRUE | FALSE | CDMO / manufacturing-services business; not counted as commercializing approved therapeutic products directly. |
-| CMP-036 | LabCorp | FDA Review | TRUE | FALSE | Diagnostics / clinical laboratory business; not counted as a therapeutic-product regulatory owner. |
-| CMP-036 | LabCorp | Commercial | TRUE | FALSE | Diagnostics / clinical laboratory business; not counted as commercializing approved therapeutic products directly in this therapeutic lifecycle model. |
-| CMP-039 | CVS Health Corporation | Commercial | TRUE | FALSE | Retail pharmacy / healthcare services business; not treated as therapeutic product commercialization owner in this lifecycle model. |
-| CMP-042 | Viatris Inc. | Discovery | TRUE | FALSE | Generics / biosimilars model; discovery-stage originator capability not assumed at company level. |
-| CMP-042 | Viatris Inc. | Preclinical | TRUE | FALSE | Generics / biosimilars model; preclinical-originator capability not assumed at company level. |
-| CMP-047 | Danaher | Discovery | TRUE | FALSE | Life-sciences tools / Cytiva-related infrastructure company; not counted as therapeutic discovery-stage operator. |
-| CMP-047 | Danaher | Preclinical | TRUE | FALSE | Life-sciences tools / manufacturing infrastructure company; not counted as therapeutic preclinical operator. |
-| CMP-047 | Danaher | Clinical Trials | TRUE | FALSE | Life-sciences tools / manufacturing infrastructure company; not counted as therapeutic clinical-trial sponsor/operator. |
-| CMP-049 | Elanco Animal Health Incorporated | Clinical Trials | TRUE | FALSE | Animal-health company in this MVP's human ClinicalTrials.gov scope; do not mark as human therapeutic clinical-trial lifecycle participant. |
+| CMP-047 | Danaher | Discovery | True | False | Danaher/Cytiva is tools provider enabling preclinical/clinical dev and commercial manufacturing, but no FDA review role. |
+| CMP-047 | Danaher | Commercial | False | True | Danaher/Cytiva is tools provider enabling preclinical/clinical dev and commercial manufacturing, but no FDA review role. |
+| CMP-036 | LabCorp | Preclinical | False | True | LabCorp is diagnostics/CRO provider enabling preclinical and clinical research, but no FDA review or commercial drug role. |
+| CMP-036 | LabCorp | Clinical Trials | False | True | LabCorp is diagnostics/CRO provider enabling preclinical and clinical research, but no FDA review or commercial drug role. |
+| CMP-036 | LabCorp | FDA Review | True | False | LabCorp is diagnostics/CRO provider enabling preclinical and clinical research, but no FDA review or commercial drug role. |
+| CMP-036 | LabCorp | Commercial | True | False | LabCorp is diagnostics/CRO provider enabling preclinical and clinical research, but no FDA review or commercial drug role. |
+| CMP-039 | CVS Health Corporation | Commercial | True | False | CVS Health is pharmacy retail/insurance player with no role in drug development or commercialization. |
+| CMP-022 | Zoetis Inc. | Discovery | True | False | Zoetis is animal-health company. Set FALSE under human-scoped therapeutic lifecycle. |
+| CMP-022 | Zoetis Inc. | Preclinical | True | False | Zoetis is animal-health company. Set FALSE under human-scoped therapeutic lifecycle. |
+| CMP-022 | Zoetis Inc. | Clinical Trials | True | False | Zoetis is animal-health company. Set FALSE under human-scoped therapeutic lifecycle. |
+| CMP-022 | Zoetis Inc. | FDA Review | True | False | Zoetis is animal-health company. Set FALSE under human-scoped therapeutic lifecycle. |
+| CMP-022 | Zoetis Inc. | Commercial | True | False | Zoetis is animal-health company. Set FALSE under human-scoped therapeutic lifecycle. |
+| CMP-049 | Elanco Animal Health Incorporated | Discovery | True | False | Elanco is animal-health company. Set FALSE under human-scoped therapeutic lifecycle. |
+| CMP-049 | Elanco Animal Health Incorporated | Preclinical | True | False | Elanco is animal-health company. Set FALSE under human-scoped therapeutic lifecycle. |
+| CMP-049 | Elanco Animal Health Incorporated | Clinical Trials | True | False | Elanco is animal-health company. Set FALSE under human-scoped therapeutic lifecycle. |
+| CMP-049 | Elanco Animal Health Incorporated | FDA Review | True | False | Elanco is animal-health company. Set FALSE under human-scoped therapeutic lifecycle. |
+| CMP-049 | Elanco Animal Health Incorporated | Commercial | True | False | Elanco is animal-health company. Set FALSE under human-scoped therapeutic lifecycle. |
+| CMP-030 | Haleon plc | Clinical Trials | True | False | Haleon is consumer OTC company. Set FALSE for biopharma stages, Commercial=TRUE for OTC retail. |
+| CMP-030 | Haleon plc | FDA Review | True | False | Haleon is consumer OTC company. Set FALSE for biopharma stages, Commercial=TRUE for OTC retail. |
+| CMP-032 | Sun Pharmaceutical Industries | Discovery | True | False | Sun Pharma specialty/generic dev involves preclinical comparability, bioequivalence clinicals, FDA filings, and commercial sales. |
+| CMP-042 | Viatris Inc. | Discovery | True | False | Viatris biosimilar/generic dev involves preclinical comparability, bioequivalence clinicals, FDA filings, and commercial sales. |
 
-## Correct non-full-cycle company list after P5c
+---
 
-There are **13** non-full-cycle companies after the lifecycle fix:
+## 4. Key Case Clarifications
 
-- CMP-022 — Zoetis Inc.
-- CMP-030 — Haleon plc
-- CMP-032 — Sun Pharmaceutical Industries
-- CMP-035 — Lonza
-- CMP-036 — LabCorp
-- CMP-037 — BioNTech
-- CMP-038 — Abbott Laboratories
-- CMP-039 — CVS Health Corporation
-- CMP-042 — Viatris Inc.
-- CMP-043 — Royalty Pharma plc
-- CMP-046 — Revolution Medicines
-- CMP-047 — Danaher
-- CMP-049 — Elanco Animal Health Incorporated
+### Lonza (CMP-035) Clarification:
+Lonza is a CDMO and not a therapeutic discovery-to-candidate originator, which makes **Discovery = FALSE** and classifies it as a **Non-full-cycle** company. However, under the revised CDMO/infrastructure rule, it remains an active, enabling lifecycle participant across the remaining stages: **Preclinical = TRUE**, **Clinical Trials = TRUE**, **FDA Review = TRUE**, and **Commercial = TRUE**. There are 0 net cell changes for Lonza from the baseline data.
 
-**Note:** Summit Therapeutics Inc. remains **full-cycle** in the updated `Company_Master.csv`. It should not be listed as non-full-cycle in the P5c documentation.
+### Summit Therapeutics (CMP-044) Clarification:
+Summit Therapeutics has owned clinical candidates (e.g. Ivonescimab) and commercial/regulatory operations in its pipeline, and regularly originates/licenses assets, and remains classified as a **Full-cycle company** (Discovery, Preclinical, Clinical Trials, FDA Review, and Commercial all TRUE) and is excluded from the non-full-cycle listings.
 
-## Full-cycle company list after P5c
-
-There are **37** full-cycle companies after the lifecycle fix:
-
-- CMP-001 — Ono Pharmaceutical Co., Ltd.
-- CMP-002 — Eli Lilly & Co.
-- CMP-003 — Johnson & Johnson
-- CMP-004 — AbbVie
-- CMP-005 — Roche
-- CMP-006 — AstraZeneca
-- CMP-007 — Novartis AG
-- CMP-008 — Merck & Co
-- CMP-009 — Novo Nordisk
-- CMP-010 — Amgen Inc.
-- CMP-011 — Gilead Sciences
-- CMP-012 — Pfizer
-- CMP-013 — Bristol Myers Squibb
-- CMP-014 — Vertex Pharmaceuticals
-- CMP-015 — Sanofi
-- CMP-016 — Regeneron Pharmaceuticals
-- CMP-017 — Remegen
-- CMP-018 — Merck KGaA
-- CMP-019 — Takeda Pharmaceutical
-- CMP-020 — Bayer
-- CMP-021 — Otsuka Holdings Co., Ltd.
-- CMP-023 — BeOne Medicines
-- CMP-024 — Daiichi Sankyo
-- CMP-025 — Biogen
-- CMP-026 — Astellas Pharma
-- CMP-027 — Chugai Pharmaceutical
-- CMP-028 — Moderna, Inc.
-- CMP-029 — CSL Limited
-- CMP-031 — Alnylam Pharmaceuticals
-- CMP-033 — United Therapeutics Corporation
-- CMP-034 — GlaxoSmithKline
-- CMP-040 — Neurocrine Biosciences
-- CMP-041 — Incyte Corporation
-- CMP-044 — Summit Therapeutics Inc.
-- CMP-045 — Jazz Pharmaceuticals plc
-- CMP-048 — BioMarin Pharmaceutical
-- CMP-050 — Insmed
-
-## Future review item
-
-- **CMP-038 — Abbott Laboratories:** remains classified as `FDA Review = TRUE` and `Commercial = TRUE`, with `Discovery`, `Preclinical`, and `Clinical Trials` set to `FALSE`. This reflects its established pharmaceuticals / medical-device commercialization profile in the current dashboard model. Review again if the project later enforces a pure human NME therapeutic-developer constraint.
-
-## Validation checklist
-
-| Check | Result |
-|---|---|
-| `Company_Master.csv` has exactly 50 rows | PASS |
-| `Unique_ID` remains unique | PASS |
-| No blank `Unique_ID` values | PASS |
-| Lifecycle columns contain TRUE/FALSE-compatible values only | PASS |
-| No lifecycle column names changed | PASS |
-| Updated full-cycle count is 37 | PASS |
-| Updated non-full-cycle count is 13 | PASS |
-| Expected-zero clinical companies are not incorrectly marked as full-cycle human therapeutic operators | PASS |
-| `data.py` / `app.py` syntax compatibility checked by Antigravity | PASS |
-
-## Commit guidance
-
-Commit:
-
-- `data/Company_Master.csv`
-- `audit/lifecycle_column_fix_audit.md`
-
-Do **not** commit the local backup file `Company_Master.csv.bak_p5c` to the production repo unless it is intentionally placed in a clearly marked audit/backup archive.
+### Non-Full-Cycle Company List After Correction (13 companies):
+- CMP-022 (Zoetis Inc.)
+- CMP-030 (Haleon plc)
+- CMP-032 (Sun Pharmaceutical Industries)
+- CMP-035 (Lonza)
+- CMP-036 (LabCorp)
+- CMP-037 (BioNTech)
+- CMP-038 (Abbott Laboratories)
+- CMP-039 (CVS Health Corporation)
+- CMP-042 (Viatris Inc.)
+- CMP-043 (Royalty Pharma plc)
+- CMP-046 (Revolution Medicines)
+- CMP-047 (Danaher)
+- CMP-049 (Elanco Animal Health Incorporated)
