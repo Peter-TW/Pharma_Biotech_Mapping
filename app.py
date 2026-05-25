@@ -9,7 +9,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from data import load_master, load_financials, get_latest_financials, get_lifecycle, get_positioning, get_sector_ratio_trend, load_clinical_status_summary, load_expected_zero, build_bridge_chart_data, load_clinical_inventory_normalized, get_company_clinical_inventory
+from data import load_master, load_financials, get_latest_financials, get_lifecycle, get_positioning, get_sector_ratio_trend, load_clinical_status_summary, load_expected_zero, build_bridge_chart_data, load_clinical_inventory_normalized, get_company_clinical_inventory, load_clinical_change_feed
 from charts import render_lifecycle_strip, render_financial_trend, render_intelligence_map, render_strategic_posture_quadrant, render_bridge_chart
 
 st.set_page_config(
@@ -617,10 +617,12 @@ with st.container(border=True):
 
     # 3h Methodology Disclaimer
     st.caption(
-        "This chart links reported R&D investment with ClinicalTrials.gov late-stage exposure. "
-        "Active Phase III count is a registry-based exposure measure, not a probability-of-success "
-        "forecast, asset quality measure, or valuation upside indicator. Differences in trial size, "
-        "indication, and outsourcing model make cross-company comparisons indicative only."
+        "Bubble size is log-scaled market cap. X-axis uses latest reported R&D annualized from the company’s latest financial period. "
+        "Y-axis uses owned ClinicalTrials.gov records in active-pipeline statuses only. "
+        "Counts reflect registry exposure, not probability of success, asset quality, or valuation upside."
+    )
+    st.caption(
+        "ClinicalTrials.gov does not cover every non-US registry-only trial, so region-only programs may be absent."
     )
     st.caption(
         "Companies with generics-led or specialty-branded business models "
@@ -914,6 +916,191 @@ with st.container(border=True):
                 f'</div>',
                 unsafe_allow_html=True
             )
+
+
+# ── Clinical Change Feed ──────────────────────────────────────────────
+with st.container(border=True):
+    st.subheader("Clinical Change Feed")
+    question_prompt("What changed recently in this company’s ClinicalTrials.gov footprint?")
+    
+    try:
+        df_feed = load_clinical_change_feed()
+        feed_loaded = True
+    except Exception as e:
+        df_feed = pd.DataFrame()
+        feed_loaded = False
+        
+    if not feed_loaded or df_feed.empty:
+        # High-contrast placeholder panel
+        st.markdown(
+            '<div style="padding:18px 22px; border-radius:8px; background-color:#1A1F2B; '
+            'border:1px solid #2A2E3A; color:#E6E9EF; text-align:center; font-size:14px; line-height:1.6; margin-bottom:10px;">'
+            '⏳ &nbsp;<b>Awaiting next snapshot:</b> The change feed requires at least two monthly ClinicalTrials.gov '
+            'snapshots to detect status, phase, or attribution changes. The current run is a cold start, '
+            'so no true change events are available yet.'
+            '</div>',
+            unsafe_allow_html=True
+        )
+    else:
+        # Filter to selected company
+        company_events = df_feed[df_feed["Unique_ID"] == uid].copy()
+        
+        if company_events.empty:
+            st.info("No clinical change events detected for this company.")
+        else:
+            # Apply default filter
+            if "Window_90D" in company_events.columns:
+                filtered_events = company_events[company_events["Window_90D"] == True].copy()
+                if filtered_events.empty:
+                    filtered_events = company_events.head(25)
+            else:
+                filtered_events = company_events.head(25)
+                
+            if filtered_events.empty:
+                st.info("No change events in the last 90 days.")
+            else:
+                # Present events
+                event_table = pd.DataFrame()
+                
+                if "Detected_At_UTC" in filtered_events.columns:
+                    event_table["Date Detected"] = pd.to_datetime(filtered_events["Detected_At_UTC"]).dt.strftime("%Y-%m-%d").fillna("")
+                
+                event_table["Change Type"] = filtered_events.get("Change_Type", "")
+                event_table["NCT ID"] = filtered_events.get("NCT_ID", "")
+                event_table["Brief Title"] = filtered_events.get("Brief_Title", "")
+                
+                prev_status_col = "Previous_Status_Bucket" if "Previous_Status_Bucket" in filtered_events.columns else "Previous_Overall_Status_Raw"
+                curr_status_col = "Current_Status_Bucket" if "Current_Status_Bucket" in filtered_events.columns else "Current_Overall_Status_Raw"
+                event_table["Previous Status"] = filtered_events.get(prev_status_col, "")
+                event_table["Current Status"] = filtered_events.get(curr_status_col, "")
+                
+                event_table["Previous Phase"] = filtered_events.get("Previous_Phase_Bucket_Exclusive", "")
+                event_table["Current Phase"] = filtered_events.get("Current_Phase_Bucket_Exclusive", "")
+                
+                event_table["Study Link"] = filtered_events.get("Study_URL", "")
+                
+                col_config = {
+                    "Date Detected": st.column_config.TextColumn("Date Detected", width="small"),
+                    "Change Type": st.column_config.TextColumn("Change Type", width="medium"),
+                    "NCT ID": st.column_config.TextColumn("NCT ID", width="small"),
+                    "Brief Title": st.column_config.TextColumn("Brief Title", width="large"),
+                    "Previous Status": st.column_config.TextColumn("Previous Status", width="small"),
+                    "Current Status": st.column_config.TextColumn("Current Status", width="small"),
+                    "Previous Phase": st.column_config.TextColumn("Previous Phase", width="small"),
+                    "Current Phase": st.column_config.TextColumn("Current Phase", width="small"),
+                    "Study Link": st.column_config.LinkColumn("Study Link", display_text="Open NCT", width="small")
+                }
+                
+                st.dataframe(
+                    event_table,
+                    column_config=col_config,
+                    use_container_width=True,
+                    hide_index=True
+                )
+
+
+# ── Recent Registry Updates ──────────────────────────────────────────
+with st.container(border=True):
+    st.subheader("Recent Registry Updates")
+    question_prompt("Which ClinicalTrials.gov records for this company were recently updated in the registry?")
+    
+    st.markdown(
+        '<div style="font-size:13px; color:#A3B3C2; margin-bottom:12px; '
+        'padding:8px 12px; border-radius:6px; background-color:#1A1F2B; border:1px solid #2A2E3A;">'
+        '💡 &nbsp;<b>Note:</b> Recent registry updates are based on ClinicalTrials.gov update dates and may include '
+        'administrative edits, not only clinical milestones.'
+        '</div>',
+        unsafe_allow_html=True
+    )
+    
+    try:
+        # Determine scope
+        scope = scope_choice if 'scope_choice' in locals() else "Owned footprint"
+        
+        # Get selected company inventory filtered by scope
+        registry_inv = get_company_clinical_inventory(clinical_inventory, uid, scope)
+        registry_loaded = True
+    except Exception as e:
+        registry_loaded = False
+        
+    if registry_loaded and not registry_inv.empty:
+        # Determine anchor date (max Fetched_At_UTC or Last_Update_Submit_Date)
+        if "Fetched_At_UTC" in clinical_inventory.columns and clinical_inventory["Fetched_At_UTC"].notna().any():
+            anchor_date = pd.to_datetime(clinical_inventory["Fetched_At_UTC"]).max()
+        else:
+            anchor_date = pd.to_datetime(clinical_inventory["Last_Update_Submit_Date"]).max()
+            
+        if pd.isna(anchor_date) or anchor_date is None:
+            anchor_date = pd.Timestamp.now(tz='utc')
+            
+        if anchor_date.tzinfo is not None:
+            anchor_date = anchor_date.tz_convert(None)
+            
+        # Get threshold date (90 days ago)
+        threshold_date = anchor_date - pd.Timedelta(days=90)
+        
+        # Filter to Last_Update_Submit_Date >= threshold_date
+        temp_updates = registry_inv[registry_inv["Last_Update_Submit_Date"] >= threshold_date].copy()
+        
+        show_fallback_note = False
+        if temp_updates.empty:
+            show_fallback_note = True
+            temp_updates = registry_inv.sort_values(by="Last_Update_Submit_Date", ascending=False)
+            
+        # Row limit control
+        limit_select = st.radio(
+            "Rows to show (updates)",
+            options=["10", "25", "50"],
+            index=0,
+            horizontal=True,
+            key="recent_updates_limit"
+        )
+        limit_val = int(limit_select)
+        
+        # Display fallback note if active
+        if show_fallback_note:
+            st.info("No records were updated in the last 90 days; showing the most recent registry updates instead.")
+            
+        # Slice to limit
+        display_updates_raw = temp_updates.head(limit_val)
+        
+        # Build table
+        updates_table = pd.DataFrame()
+        updates_table["NCT ID"] = display_updates_raw["NCT_ID"].fillna("")
+        updates_table["Brief Title"] = display_updates_raw["Brief_Title"].fillna("")
+        updates_table["Status"] = display_updates_raw["Status_Bucket"].fillna("")
+        updates_table["Phase"] = display_updates_raw["Phase_Bucket_Exclusive"].fillna("")
+        updates_table["Sponsor Role"] = display_updates_raw["Sponsor_Match_Type"].fillna("")
+        
+        # Format date nicely
+        dates = pd.to_datetime(display_updates_raw["Last_Update_Submit_Date"])
+        updates_table["Last Update"] = dates.dt.strftime("%Y-%m-%d").fillna("")
+        
+        # Days Since Update
+        diffs = (anchor_date - dates).dt.days
+        updates_table["Days Since Update"] = diffs.fillna("").apply(lambda d: f"{int(d)}d ago" if d != "" else "—")
+        
+        updates_table["Study Link"] = display_updates_raw["Study_URL"].fillna("")
+        
+        col_config = {
+            "NCT ID": st.column_config.TextColumn("NCT ID", width="small"),
+            "Brief Title": st.column_config.TextColumn("Brief Title", width="large"),
+            "Status": st.column_config.TextColumn("Status", width="medium"),
+            "Phase": st.column_config.TextColumn("Phase", width="small"),
+            "Sponsor Role": st.column_config.TextColumn("Sponsor Role", width="medium"),
+            "Last Update": st.column_config.TextColumn("Last Update", width="small"),
+            "Days Since Update": st.column_config.TextColumn("Days Since Update", width="small"),
+            "Study Link": st.column_config.LinkColumn("Study Link", display_text="Open NCT", width="small")
+        }
+        
+        st.dataframe(
+            updates_table,
+            column_config=col_config,
+            use_container_width=True,
+            hide_index=True
+        )
+    else:
+        st.info("No clinical trial records available for this company.")
 
 
 # ── Financial Trend ─────────────────────────────────────────────────
