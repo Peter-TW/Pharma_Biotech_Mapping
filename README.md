@@ -252,5 +252,5 @@ The project is intentionally small in surface area but dense in methodology. It 
 - M&A-aware entity resolution,
 - auditable ETL design,
 - Streamlit product design for both mobile overview and desktop detail,
-- and honest communication of data limitations.
+- stakeholder-ready communication of methodology, uncertainty, and data limitations.
 
