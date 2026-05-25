@@ -106,7 +106,7 @@ Clinical data is built from ClinicalTrials.gov API v2 with an M&A-aware sponsor 
 | `data/clinical_trials/ClinicalTrials_Inventory_Normalized.csv` | Adds status buckets, phase buckets, phase weights, and filter-contract booleans |
 | `data/clinical_trials/ClinicalTrials_Status_Summary.csv` | One-row-per-company KPI summary used by the dashboard |
 | `data/clinical_trials/ClinicalTrials_Change_Feed.csv` | Append-only status/phase/attribution event log; currently cold-start |
-| `data/clinical_trials/Expected_Zero_Companies.csv` | Explicit expected-zero documentation for Zoetis, Royalty Pharma, Cytiva, and Elanco |
+| `data/clinical_trials/Expected_Zero_Companies.csv` | Explicit expected-zero documentation for Zoetis, Royalty Pharma, Danaher, and Elanco |
 | `data/clinical_trials/Sponsor_Alias_Map.csv` | M&A-aware sponsor/subsidiary/acquired-entity alias map |
 | `data/clinical_trials/ClinicalTrials_Alias_Reconciliation.csv` | Per-alias API yield and matching reconciliation |
 
@@ -247,7 +247,7 @@ Before treating the deployment as final:
 | MVP-2 P5b — Clinical detail panel | Complete | Clinical Trial Footprint | Adds company KPI cards, owned/participated scope, NCT-level table, and registry links. |
 | MVP-2 P5c — Lifecycle audit | Complete / reviewable | `lifecycle_column_fix_audit.md` | Documents lifecycle edge-case rules and validates lifecycle filter behavior. |
 | MVP-2 P5d — Change-feed scaffold | Complete | Clinical Change Feed + Recent Registry Updates | Shows cold-start state honestly while surfacing recent registry update context. |
-| MVP-2 P5e — README polish | In progress | Portfolio-facing documentation | Updates screenshots, project narrative, deployment checks, and roadmap. |
+| MVP-2 P5e — README polish | Complete | Portfolio-facing documentation | Updates screenshots, project narrative, deployment checks, and roadmap. |
 
 ---
 
@@ -264,7 +264,7 @@ Before treating the deployment as final:
 | MVP-2 P5b clinical detail | Complete | KPI cards and NCT-level table |
 | MVP-2 P5c lifecycle audit | Complete / reviewable | Edge-case rules documented; can be refined as scope changes |
 | MVP-2 P5d change-feed scaffold | Complete | Cold-start state + recent registry updates |
-| MVP-2 P5e README polish | Complete after screenshot commit | Portfolio-facing documentation |
+| MVP-2 P5e README polish | Complete | Portfolio-facing documentation |
 | MVP-3 network map | Future | Asset, indication, and partnership graph |
 | MVP-3 multi-registry expansion | Future | WHO ICTRP / CTIS / jRCT / ChiCTR integration |
 
