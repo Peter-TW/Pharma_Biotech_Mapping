@@ -38,7 +38,7 @@ def render_lifecycle_strip(company_lifecycle, compact=False):
 
     if compact:
         base = (
-            "text-align:center; padding:10px 6px; border-radius:8px; "
+            "text-align:center; padding:8px 6px; border-radius:8px; "
             "font-size:12px; min-width:0;"
         )
         chips = []
@@ -58,7 +58,7 @@ def render_lifecycle_strip(company_lifecycle, compact=False):
             chips.append(f'<div style="{style}">{label}</div>')
         
         st.markdown(
-            '<div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; '
+            '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:6px; '
             'margin:4px 0 10px 0;">' + "".join(chips) + "</div>",
             unsafe_allow_html=True,
         )
