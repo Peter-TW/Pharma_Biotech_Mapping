@@ -223,6 +223,34 @@ Before treating the deployment as final:
 
 ---
 
+## Build phases
+
+### MVP-1 — Financial intelligence layer
+
+| Phase | Status | Output | Purpose |
+|---|---|---|---|
+| MVP-1 P1 — Company universe setup | Complete | `Company_Master.csv` | Defines the Top 50 company universe, identifiers, exchanges, lifecycle flags, source metadata, and dashboard filter fields. |
+| MVP-1 P2 — Financial data extraction | Complete | `Quarterly_Financials.csv` | Structures reported revenue, R&D, SG&A, cash, and market cap across 2024–2026 reported periods. |
+| MVP-1 P3 — Cadence and calendar-quarter handling | Complete | Period/cadence logic in CSV + loaders | Keeps Q1–Q4, H1, 9M, and FY reporters comparable without creating synthetic quarters. |
+| MVP-1 P4 — Financial validation and audit | Complete | validation checks + `Dashboard_Data_Notes.csv` | Captures data caveats, sparse periods, duplicate checks, missing values, and latest-period selection logic. |
+| MVP-1 P5 — Dashboard integration | Complete | Streamlit financial dashboard | Renders Sector Overview, Sector Trend, Intelligence Map, Strategic Posture, Lifecycle Footprint, Financial Snapshot, Financial Trend, and Data Sources sections. |
+
+### MVP-2 — Clinical-trial intelligence layer
+
+| Phase | Status | Output | Purpose |
+|---|---|---|---|
+| MVP-2 P1 — ClinicalTrials.gov fetch | Complete | `ClinicalTrials_Inventory.csv` | Builds one row per company-NCT match with sponsor alias and M&A-aware attribution. |
+| MVP-2 P2 — Trial normalization | Complete | `ClinicalTrials_Inventory_Normalized.csv` | Adds status buckets, phase buckets, phase weights, and owned/participated filter flags. |
+| MVP-2 P3 — Company clinical summary | Complete | `ClinicalTrials_Status_Summary.csv` | Aggregates row-level trial data into one-row-per-company KPI inputs. |
+| MVP-2 P4 — Snapshot change feed | Cold-start | `ClinicalTrials_Change_Feed.csv` | Detects new/status/phase/attribution changes once at least two snapshots exist. |
+| MVP-2 P5a — Bridge chart | Complete | Clinical Productivity vs. R&D Spend | Connects annualized R&D spend to owned active Phase III / phase-weighted clinical exposure. |
+| MVP-2 P5b — Clinical detail panel | Complete | Clinical Trial Footprint | Adds company KPI cards, owned/participated scope, NCT-level table, and registry links. |
+| MVP-2 P5c — Lifecycle audit | Complete / reviewable | `lifecycle_column_fix_audit.md` | Documents lifecycle edge-case rules and validates lifecycle filter behavior. |
+| MVP-2 P5d — Change-feed scaffold | Complete | Clinical Change Feed + Recent Registry Updates | Shows cold-start state honestly while surfacing recent registry update context. |
+| MVP-2 P5e — README polish | In progress | Portfolio-facing documentation | Updates screenshots, project narrative, deployment checks, and roadmap. |
+
+---
+
 ## Roadmap
 
 | Phase | Status | Notes |
