@@ -28,41 +28,71 @@ CADENCE_COLORS = {
 
 # ── Lifecycle Footprint ─────────────────────────────────────────────
 
-def render_lifecycle_strip(company_lifecycle):
-    """Render the 5-stage drug-development pipeline strip for one company."""
+def render_lifecycle_strip(company_lifecycle, compact=False):
+    """Render the 5-stage drug-development pipeline strip for one company.
+    
+    If compact is True, renders a two-column grid optimized for mobile/small screens.
+    """
     active = set(company_lifecycle["active_stages"])
     profile = company_lifecycle["lifecycle_profile"]
 
-    base = (
-        "flex:1; text-align:center; padding:14px 6px; border-radius:8px; "
-        "font-size:13px;"
-    )
-    chips = []
-    for i, stage in enumerate(LIFECYCLE_STAGES):
-        if stage in active:
-            style = (
-                base + "background:rgba(0,180,216,0.16); border:1px solid "
-                f"{ACCENT}; color:#E6E9EF; font-weight:600;"
-            )
-            label = f"&#10003; {stage}"
-        else:
-            style = (
-                base + "background:#1A1F2B; border:1px solid #2A2E3A; "
-                "color:#5A6072; font-weight:500;"
-            )
-            label = stage
-        chips.append(f'<div style="{style}">{label}</div>')
-        if i < len(LIFECYCLE_STAGES) - 1:
-            chips.append(
-                '<div style="color:#5A6072; font-size:16px; padding:0 2px;">'
-                "&#8594;</div>"
-            )
+    if compact:
+        base = (
+            "text-align:center; padding:10px 6px; border-radius:8px; "
+            "font-size:12px; min-width:0;"
+        )
+        chips = []
+        for stage in LIFECYCLE_STAGES:
+            if stage in active:
+                style = (
+                    base + "background:rgba(0,180,216,0.16); border:1px solid "
+                    f"{ACCENT}; color:#E6E9EF; font-weight:600;"
+                )
+                label = f"&#10003; {stage}"
+            else:
+                style = (
+                    base + "background:#1A1F2B; border:1px solid #2A2E3A; "
+                    "color:#5A6072; font-weight:500;"
+                )
+                label = stage
+            chips.append(f'<div style="{style}">{label}</div>')
+        
+        st.markdown(
+            '<div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; '
+            'margin:4px 0 10px 0;">' + "".join(chips) + "</div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        base = (
+            "flex:1; text-align:center; padding:14px 6px; border-radius:8px; "
+            "font-size:13px;"
+        )
+        chips = []
+        for i, stage in enumerate(LIFECYCLE_STAGES):
+            if stage in active:
+                style = (
+                    base + "background:rgba(0,180,216,0.16); border:1px solid "
+                    f"{ACCENT}; color:#E6E9EF; font-weight:600;"
+                )
+                label = f"&#10003; {stage}"
+            else:
+                style = (
+                    base + "background:#1A1F2B; border:1px solid #2A2E3A; "
+                    "color:#5A6072; font-weight:500;"
+                )
+                label = stage
+            chips.append(f'<div style="{style}">{label}</div>')
+            if i < len(LIFECYCLE_STAGES) - 1:
+                chips.append(
+                    '<div style="color:#5A6072; font-size:16px; padding:0 2px;">'
+                    "&#8594;</div>"
+                )
 
-    st.markdown(
-        '<div style="display:flex; align-items:center; gap:6px; '
-        'margin:4px 0 10px 0;">' + "".join(chips) + "</div>",
-        unsafe_allow_html=True,
-    )
+        st.markdown(
+            '<div style="display:flex; align-items:center; gap:6px; '
+            'margin:4px 0 10px 0;">' + "".join(chips) + "</div>",
+            unsafe_allow_html=True,
+        )
     st.markdown(f"**Profile:** {profile}")
 
 
@@ -150,7 +180,7 @@ def render_financial_trend(company_fin, metric_label, metric_col):
         )
 
 
-def render_intelligence_map(plot_df, selected_uid):
+def render_intelligence_map(plot_df, selected_uid, compact=False):
     """Render Plotly scatter plot for all companies in view."""
     # Drop rows where Q_Revenue or rd_intensity is NaN, and Q_Revenue <= 0 for log scale.
     df = plot_df[plot_df["Q_Revenue"].notna() & plot_df["rd_intensity"].notna()].copy()
@@ -312,19 +342,20 @@ def render_intelligence_map(plot_df, selected_uid):
     )
     
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-    st.caption(
-        "Bubble size: log-scaled market cap. X-axis uses reported quarterly "
-        "revenue where available; FY reporters are visually annualised ÷4 for "
-        "map placement only and are not written back as synthetic quarters. "
-        "Companies above 100% R&D intensity are shown clamped at the top edge "
-        "(100%)."
-    )
+    if not compact:
+        st.caption(
+            "Bubble size: log-scaled market cap. X-axis uses reported quarterly "
+            "revenue where available; FY reporters are visually annualised ÷4 for "
+            "map placement only and are not written back as synthetic quarters. "
+            "Companies above 100% R&D intensity are shown clamped at the top edge "
+            "(100%)."
+        )
 
 
 
 # ── Strategic Posture Quadrant ───────────────────────────────────────
 
-def render_strategic_posture_quadrant(plot_df, selected_uid):
+def render_strategic_posture_quadrant(plot_df, selected_uid, compact=False):
     """Render the investor-style posture quadrant.
 
     X-axis: Cash / Market Cap, a balance-sheet buffer relative to public
@@ -511,14 +542,15 @@ def render_strategic_posture_quadrant(plot_df, selected_uid):
     )
 
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-    st.caption(
-        "Strategic Posture compares R&D intensity with cash buffer relative to "
-        "market value. Dashed lines show the median of companies currently in "
-        "view, so quadrants are relative to the selected lifecycle filter. Bubble "
-        "size is log-scaled market cap. Companies above 100% R&D intensity are "
-        "shown clamped at the top edge (100%). This highlights financial capacity "
-        "and research commitment, not valuation upside or clinical success probability."
-    )
+    if not compact:
+        st.caption(
+            "Strategic Posture compares R&D intensity with cash buffer relative to "
+            "market value. Dashed lines show the median of companies currently in "
+            "view, so quadrants are relative to the selected lifecycle filter. Bubble "
+            "size is log-scaled market cap. Companies above 100% R&D intensity are "
+            "shown clamped at the top edge (100%). This highlights financial capacity "
+            "and research commitment, not valuation upside or clinical success probability."
+        )
 
 
 def render_bridge_chart(df_bridge, y_axis_choice, selected_unique_id=None):
