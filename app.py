@@ -444,18 +444,31 @@ with st.container(border=True):
             focus_expanded = False
             y_min_eff, y_max_eff = focus_min, focus_max
 
-            if y_axis_view == "Focus range":
-                if focus_covers:
-                    y_scale = alt.Scale(domain=[focus_min, focus_max])
-                else:
-                    pad = max((data_max - data_min) * 0.1, 0.005)
-                    y_min_eff = min(focus_min, data_min - pad)
-                    y_max_eff = max(focus_max, data_max + pad)
+            if ratio_metric == "Cash / Market Cap":
+                if y_axis_view == "Focus range":
+                    y_min_eff = 0.0
+                    y_max_eff = max(0.05, data_max * 1.10)
                     y_scale = alt.Scale(domain=[y_min_eff, y_max_eff])
-                    focus_expanded = True
+                    focus_expanded = (data_max > 0.05)
+                    focus_min, focus_max = 0.0, 0.05
+                else:
+                    y_min_eff = 0.0
+                    y_max_eff = max(0.10, data_max * 1.15)
+                    y_scale = alt.Scale(domain=[y_min_eff, y_max_eff])
+                    focus_expanded = False
             else:
-                # Full range = include 0 to show absolute magnitude.
-                y_scale = alt.Scale(zero=True)
+                if y_axis_view == "Focus range":
+                    if focus_covers:
+                        y_scale = alt.Scale(domain=[focus_min, focus_max])
+                    else:
+                        pad = max((data_max - data_min) * 0.1, 0.005)
+                        y_min_eff = min(focus_min, data_min - pad)
+                        y_max_eff = max(focus_max, data_max + pad)
+                        y_scale = alt.Scale(domain=[y_min_eff, y_max_eff])
+                        focus_expanded = True
+                else:
+                    # Full range = include 0 to show absolute magnitude.
+                    y_scale = alt.Scale(zero=True)
 
             chart = (
                 alt.Chart(metric_df)
@@ -797,7 +810,18 @@ with st.container(border=True):
         top5_df["Weighted Exposure"] = top5_raw["Phase_Weighted_Score_Active"].round(1)
         top5_df["Positioning"] = top5_raw["Positioning"]
         
-        st.dataframe(top5_df, use_container_width=True, hide_index=True)
+        st.dataframe(
+            top5_df,
+            column_config={
+                "Company": st.column_config.TextColumn("Company", alignment="left"),
+                "Annualized R&D Spend": st.column_config.TextColumn("Annualized R&D Spend", alignment="center"),
+                "Active Phase III": st.column_config.NumberColumn("Active Phase III", format="%d", alignment="center"),
+                "Weighted Exposure": st.column_config.NumberColumn("Weighted Exposure", format="%.1f", alignment="center"),
+                "Positioning": st.column_config.TextColumn("Positioning", alignment="left"),
+            },
+            use_container_width=True,
+            hide_index=True
+        )
         
         with st.expander("Show full Clinical Productivity chart"):
             render_bridge_chart(df_bridge, y_choice_key, selected_unique_id=uid)
