@@ -24,10 +24,10 @@ This audit documents the systematic correction of the five lifecycle stage colum
 | Metric / Stage | Before Baseline Count | Corrected After Count | Net Change |
 |---|---|---|---|
 | **Total Companies** | 50 | 50 | 0 |
-| **Discovery = TRUE** | 44 | 41 | -3 |
-| **Preclinical = TRUE** | 45 | 41 | -4 |
-| **Clinical Trials = TRUE** | 46 | 41 | -5 |
-| **FDA Review = TRUE** | 45 | 43 | -2 |
+| **Discovery = TRUE** | 44 | 39 | -5 |
+| **Preclinical = TRUE** | 45 | 44 | -1 |
+| **Clinical Trials = TRUE** | 46 | 44 | -2 |
+| **FDA Review = TRUE** | 45 | 41 | -4 |
 | **Commercial = TRUE** | 47 | 44 | -3 |
 | **Full-cycle profile (all 5 TRUE)** | 41 | 37 | -4 |
 | **Non-full-cycle profile** | 9 | 13 | +4 |
