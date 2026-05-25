@@ -206,30 +206,31 @@ def get_lifecycle(master: pd.DataFrame) -> pd.DataFrame:
 @st.cache_data
 def get_positioning(master: pd.DataFrame, latest: pd.DataFrame) -> pd.DataFrame:
     """Derive positioning labels per company based on lifecycle and latest financials."""
-    df = master[["Unique_ID", "Commercial"]].merge(
+    cols_to_use = ["Unique_ID"] + [c for c in LIFECYCLE_STAGES if c in master.columns]
+    if "Commercial" not in cols_to_use:
+        cols_to_use.append("Commercial")
+    cols_to_use = list(dict.fromkeys(cols_to_use))
+
+    df = master[cols_to_use].merge(
         latest[["Unique_ID", "rd_intensity", "Market_Cap_USD_M"]],
         on="Unique_ID",
         how="left"
     )
 
     def compute_pos(row):
+        is_full_cycle = all(row.get(col) == True for col in LIFECYCLE_STAGES)
         comm = row["Commercial"]
         mcap = row["Market_Cap_USD_M"]
         rdi = row["rd_intensity"]
         
-        if not comm:
-            return "Pipeline-stage challenger"
-        
-        if pd.notna(mcap) and mcap >= 100000:
+        if is_full_cycle and pd.notna(mcap) and mcap >= 100000:
             return "Full-cycle leader"
-        
-        if pd.notna(rdi):
-            if rdi >= 0.30:
-                return "R&D-driven commercial"
-            else:
-                return "Commercial-led"
-        else:
+        elif comm == True and pd.notna(rdi) and rdi >= 0.30:
+            return "R&D-driven commercial"
+        elif comm == True:
             return "Commercial-led"
+        else:
+            return "Pipeline-stage challenger"
 
     df["positioning"] = df.apply(compute_pos, axis=1)
     return df[["Unique_ID", "positioning"]]
