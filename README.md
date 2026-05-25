@@ -1,176 +1,314 @@
 # Biopharma Command Center
 
-A single-page Streamlit dashboard that turns two biopharma datasets into an
-interactive intelligence map for the Top 50 biopharma companies. It opens with
-sector-level context, then lets you drill into a selected company through
-lifecycle footprint, positioning, financial snapshot, financial trend, and data
-provenance.
+An intelligence layer for the Top 50 biopharma companies, bridging reported
+financial discipline with clinical-trial reality. Built on committed CSV
+datasets with strict attribution rules, hybrid reporting-cadence handling,
+and a fully auditable data trail.
 
-This is **MVP-1**. It focuses on high-integrity sector/company comparison using
-committed CSV data. The relationship/network map remains a later pass.
+The project is intentionally small in surface area and high in methodology
+density. Every value comes from an official source (SEC filings, company
+annual reports, ClinicalTrials.gov registry). Every data change is recorded
+in per-pass audit logs. Every cross-company comparison applies a single
+documented rule — dollar-weighted ratios, calendar-quarter alignment, and
+M&A-aware sponsor attribution.
 
-## Data discipline
+> **Live app:** _(deploy link to be added)_
+>
+> **Status:** MVP-1 financial dashboard is live. MVP-2 clinical data layer
+> is complete and committed (62,551 trial records across 50 companies,
+> 5 alias-map iterations, 9-company spot-check reconciliation, P4 change
+> feed in cold-start state awaiting next monthly snapshot). MVP-2
+> dashboard integration is in progress. The Clinical Productivity vs.
+> R&D Spend bridge chart is live (P5a). Company detail panel, change
+> feed, and lifecycle column fix are next (P5b–P5d).
 
-The dataset behind this dashboard is small, but the rules behind it are strict.
-Every value is intended to come from an official company source such as annual
-reports, quarterly results PDFs, regulatory filings, or investor materials.
-Every production data change should follow the project audit workflow: staging,
-diagnostic, preview, controlled rewrite, and an audit log of cell-level changes.
+---
 
-The dashboard follows a conservative data principle:
+## Methodology in three points
 
-- **Actual reported periods only.** `Quarterly_Financials.csv` stores periods as
-  disclosed: Q1, Q2, Q3, Q4, H1, 9M, or FY.
-- **No synthetic quarters.** Annual, half-year, and 9M values are not divided or
-  forced into quarter-level sector trends.
-- **Honest blanks over proxies.** Where a company does not separately disclose a
-  metric, the dashboard shows a blank rather than estimating from a broader line
-  item.
-- **Snapshot integrity.** Cash and Market Cap are point-in-time values. They are
-  not averaged across periods.
-- **Calendar Quarter sector logic.** Sector-level quarterly views use Q1-Q4 rows
-  only and group by `Calendar_Quarter`, so fiscal-quarter reporters land in the
-  correct market-time bucket.
-- **Company-level cadence integrity.** Company financial trends split quarterly,
-  half-year, 9M, and FY rows into separate lines so different-length reporting
-  periods are not plotted as if they were equivalent.
+This dashboard exists because cross-company biopharma comparison is
+unreasonably hard to do honestly. Three rules drive every chart, table,
+and KPI.
 
-The app reads committed CSV files only and makes **no external API calls** at
-runtime.
+### 1. Dollar-weighted aggregation, not means-of-ratios
 
-## Features
+Sector-level ratios are computed as `Σ numerator ÷ Σ denominator` across
+paired rows where both parts are disclosed, not as the average of
+per-company ratios. A simple mean over R&D Intensity values would weight
+a $50M biotech equally with Pfizer; dollar-weighting reflects the true
+sector composition. Coverage floors (50% minimum reporters per metric per
+quarter, 80% for the headline revenue base) prevent one-company
+leading-edge periods from being mistaken for sector trends.
 
-- **Lifecycle filter** — sidebar control for All companies, Full-cycle only, or
-  Non-full-cycle only. Sector, map, and company views update with this filter.
-- **Data Freshness Summary** — shows the latest broad-coverage Calendar Quarter,
-  the latest eligible sector trend point, and whether sparse leading-edge
-  quarters are hidden until coverage improves.
-- **Sector Overview** — companies in view, combined latest market cap, and
-  combined broad-coverage Calendar Quarter revenue. The revenue reference period
-  uses the latest Calendar Quarter with at least 80% revenue coverage for the
-  active lifecycle filter.
-- **Sector Trend** — dollar-weighted sector ratio trends for R&D Intensity,
-  Cash / Market Cap, and SG&A Intensity. Uses Q1-Q4 rows only, grouped by
-  `Calendar_Quarter`, with coverage badges for metric contributors, quarterly
-  reporters, and companies in the active lifecycle filter. Includes Focus range
-  and Full range y-axis views; Focus range auto-expands when data would otherwise
-  fall outside the preset band.
-- **Intelligence Map** — compares companies by revenue scale, R&D Intensity,
-  market-cap scale, and commercial/pipeline status. Bubble size is log-scaled
-  market cap. FY reporters are visually annualised ÷4 for map placement only;
-  this is not written back as synthetic quarterly data.
-- **Strategic Posture Quadrant** — compares R&D Intensity with Cash / Market Cap
-  to show whether companies combine scientific reinvestment with financial
-  firepower. Median lines are relative to the active lifecycle filter. This is
-  not a valuation-upside or clinical-success signal.
-- **Company Header** — selected company metadata with latest reported period.
-  When the disclosed fiscal quarter differs from the normalized Calendar Quarter,
-  both labels are shown.
-- **Lifecycle Footprint** — the 5-stage pipeline view: Discovery → Preclinical →
-  Clinical Trials → FDA Review → Commercial.
-- **Financial Snapshot** — latest reported Revenue, R&D, SG&A, Cash, Market Cap,
-  R&D Intensity, and Cash / Market Cap.
-- **Financial Trend** — selected-company metric trend over time, with reporting
-  cadences drawn as separate series. Hover labels use year-first period labels
-  and only add Calendar Quarter annotations for true quarterly fiscal/calendar
-  mismatches.
-- **Data Sources** — profile source, financial sources, reporting standard,
-  reporting currency, row status, derived-row count, and manual-review count.
+### 2. Calendar-quarter alignment for mixed cadences
 
-## Questions the dashboard answers
+Companies disclose financials on different fiscal calendars (Pfizer's
+calendar-aligned quarters, Daiichi Sankyo's March year-end, Roche's
+half-year cadence). The dashboard separates Q1–Q4 rows from H1, 9M, and
+FY rows. Quarterly sector trends group by `Calendar_Quarter`, never by
+`Period_Type`, so Daiichi's fiscal Q1 (April–June) lands in Calendar Q2.
+FY and H1 reporters never get annualized-then-divided to fake quarters.
+Where the disclosed fiscal quarter differs from the normalized calendar
+quarter, both labels are shown.
 
-- **Sector Overview** — What is the aggregate size and latest broad-coverage
-  Calendar Quarter revenue base of the selected biopharma universe?
-- **Sector Trend** — Is the selected universe becoming more research-intensive,
-  more cash-rich, or more SG&A-heavy over time?
-- **Intelligence Map** — How does this company position commercially and
-  scientifically against the rest of the industry?
-- **Strategic Posture Quadrant** — Does this company have enough financial
-  firepower to support its scientific investment?
-- **Lifecycle Footprint** — Where does this company participate across the
-  therapeutic product lifecycle?
-- **Financial Snapshot** — What is this company’s latest reported financial
-  position?
-- **Financial Trend** — How has this company’s reported financial profile changed
-  over time without mixing reporting cadences?
-- **Data Sources** — Can I trace where the company’s financial and profile data
-  came from?
+### 3. Honest gaps over confident guesses
 
-## What the dashboard does not claim
+Where a company doesn't disclose a metric — Sun Pharma's SG&A,
+Astellas's some-period R&D breakdown — the dashboard shows a blank, not
+a proxy. Where a clinical trial is registered under a regional
+subsidiary name not yet in the alias map, that gap is documented rather
+than papered over. The principle: an interviewer can probe any cell and
+get a defensible answer about why it shows what it shows.
 
-- It is **not** a stock recommendation tool.
-- It does **not** estimate fair value, price targets, or valuation upside.
-- R&D Intensity measures spending commitment, not pipeline quality or clinical
-  probability of success.
-- Cash / Market Cap measures balance-sheet buffer relative to valuation, not
-  whether a stock is undervalued.
-- Strategic Posture highlights financial capacity and research commitment, not
-  clinical success probability.
-- Lifecycle stages are high-level company participation flags, not asset-level
-  pipeline depth.
+---
 
-## Core calculation rules
+## What's in the project
 
-### Sector Overview
+### Financial layer (MVP-1 — live)
 
-- Uses Q1-Q4 rows only.
-- Groups by `Calendar_Year + Calendar_Quarter`.
-- Selects the latest Calendar Quarter with at least 80% revenue coverage for the
-  active lifecycle filter.
-- Uses `math.ceil()` for the 80% threshold so the displayed period truly meets
-  or exceeds the stated coverage rule.
-- Excludes FY, H1, and 9M rows from the quarterly sector view.
+Two committed CSVs (`Company_Master.csv`, `Quarterly_Financials.csv`)
+covering 2024–2026 reported periods for 50 companies across NYSE,
+NASDAQ, TSE, HKEX, and major European exchanges. Periods stored as
+disclosed (Q1–Q4, H1, 9M, FY). FX-normalized to USD millions at
+period-end rates.
 
-### Sector Trend
+**Dashboard sections currently rendering:**
 
-- Uses Q1-Q4 rows only.
-- Groups by `Calendar_Year + Calendar_Quarter`.
-- Applies a 50% coverage floor so one-company leading-edge periods do not appear
-  as sector trends.
-- Calculates ratios as dollar-weighted aggregate ratios:
-  - R&D Intensity = `Σ R&D ÷ Σ Revenue`
-  - Cash / Market Cap = `Σ Cash ÷ Σ Market Cap`
-  - SG&A Intensity = `Σ SG&A ÷ Σ Revenue`
-- Uses paired non-null numerator/denominator rows only.
-- Excludes zero denominators.
-- Does not treat missing values as zero.
-- Provides Focus range and Full range y-axis views. Full range starts from zero;
-  Focus range narrows the visual field and auto-expands if the data falls outside
-  the preset focus band.
+| Section | Question it answers |
+|---|---|
+| Sector Overview | Aggregate size and latest broad-coverage revenue base of the selected universe |
+| Sector Trend | Is the universe becoming more research-intensive, more cash-rich, or more SG&A-heavy over time? |
+| Intelligence Map | How does this company position commercially and scientifically against the rest of the industry? |
+| Strategic Posture Quadrant | Does this company have enough financial firepower to support its scientific investment? |
+| Lifecycle Footprint | Where does this company participate across the therapeutic product lifecycle? |
+| Financial Snapshot | What is this company's latest reported financial position? |
+| Financial Trend | How has this company's reported financial profile changed over time without mixing reporting cadences? |
+| Data Sources panel | Can I trace where the company's financial and profile data came from? |
 
-### Company latest financials
+### Clinical-trial layer (MVP-2 data — complete; dashboard integration in progress)
 
-- Uses the latest row by `Quarter_End_Date`.
-- Where Q4 and FY share the same end date, FY receives higher priority so the
-  latest snapshot is deterministic and not dependent on CSV row order.
-- R&D Intensity and Cash / Market Cap use non-zero denominators only.
+Five committed CSV layers built from ClinicalTrials.gov API v2 with an
+M&A-aware sponsor matching overlay:
 
-### Financial Trend
+| Layer | Rows | Purpose |
+|---|---:|---|
+| `ClinicalTrials_Inventory.csv` | 62,551 | One row per company-NCT match; raw values preserved |
+| `ClinicalTrials_Inventory_Normalized.csv` | 62,551 | Adds status buckets, phase buckets (exclusive + inclusive), filter-contract booleans |
+| `ClinicalTrials_Status_Summary.csv` | 50 × 62 cols | Per-company KPI aggregates with Active × Phase cross-tabs |
+| `ClinicalTrials_Change_Feed.csv` | 0 (cold start) | Append-only event log of status/phase/attribution changes between monthly snapshots |
+| `snapshots/<YYYY-MM-DD>/` | 1 archive | Dated copies of the normalized inventory for change-feed diff comparison |
 
-- Quarterly, H1, 9M, and FY rows are plotted as separate cadence series.
-- A full-year figure is never plotted as if it were a single quarter.
-- Calendar Quarter annotation appears only when both the disclosed period and the
-  normalized calendar period are true single-quarter labels.
+Supporting infrastructure:
+- `Sponsor_Alias_Map.csv` — 328 sponsor aliases across 5 iterations, each with `Added_In_Iteration` and `Iteration_Reason` for audit
+- `ClinicalTrials_Alias_Reconciliation.csv` — per-alias yield (API total → rows written), for spot-check validation
+- `ClinicalTrials_Fetch_Audit.csv`, `ClinicalTrials_Normalize_Audit.csv`, `ClinicalTrials_Summary_Audit.csv`, `ClinicalTrials_Change_Feed_Audit.csv` — append-only run logs
+- `Expected_Zero_Companies.csv` — explicit zero-trial documentation for Zoetis, Royalty Pharma, Cytiva, Elanco (non-pharma businesses)
+
+### The bridge chart (MVP-2 visualization — next)
+
+The headline visualization wires the financial layer to the clinical
+layer: a "Clinical Productivity vs. R&D Spend" bubble chart with R&D
+spend on X (log scale), Active Phase III trial count on Y, market cap
+as bubble size, and the financial-discipline + M&A-aware-attribution
+machinery underwriting both axes. This is what the layered data work
+above was built for.
+
+---
+
+## What makes this defensible
+
+A small biopharma intelligence dashboard is not a novel concept. What
+matters is whether the data underneath it survives scrutiny. The
+methodology choices below are the things to probe during an interview.
+
+### M&A-aware sponsor attribution
+
+ClinicalTrials.gov's sponsor search treats "Pfizer" and "Seagen" as
+different entities. The dashboard's M&A overlay correctly attributes
+inherited Seagen trials to Pfizer (acquired December 2023) using a
+documented rule: trials count under the parent for snapshots after the
+ownership-effective date. The same logic applies to Roche/Genentech
+(1,562 inherited trials), AbbVie/Allergan (728), AbbVie/Pharmacyclics
+(111), BMS/Celgene (478), Lilly/Loxo, Takeda/Shire/Baxalta/Millennium,
+GSK/ViiV/Stiefel/HGS, Sanofi/Pasteur/Genzyme, Astellas regional
+subsidiaries, and 30+ other documented acquisitions across the alias
+map's 5 iterations.
+
+The overlay surfaces approximately 3,035 trials across the 9
+spot-checked companies that ClinicalTrials.gov's naive sponsor search
+does not — Roche/Genentech alone is the largest single example.
+
+### Spot-check reconciliation against ClinicalTrials.gov
+
+Nine of the 50 Top-50 companies (Pfizer, Roche, Lilly, Vertex, Daiichi
+Sankyo, J&J, AbbVie, GSK, Astellas) were directly reconciled against
+ClinicalTrials.gov sponsor exports. For each, the dashboard's Lead
+Sponsor count was confirmed within ±1 trial of the registry; the M&A
+overlay's added trials were independently validated. Where alias gaps
+were found (Janssen verbose names, regional subsidiaries for Japanese
+pharma, GSK's ViiV / Stiefel / HGS / Sirtris, Sanofi's Pasteur /
+Genzyme / Kadmon), they were fixed via iterative alias-map additions
+with each iteration tagged in the data.
+
+The reconciliation methodology is documented; the remaining 41
+companies use seed alias map only, with bounded expected gap per
+company.
+
+### Hybrid reporting-cadence handling
+
+Sector trends use Q1–Q4 rows only, grouped by `Calendar_Quarter`. FY
+and H1 reporters are surfaced in per-company views as separate cadence
+lines, never blended into a quarterly trend. The cadence pre-scan
+identifies each company's actual filing frequency rather than assuming
+based on exchange. Determinism in latest-snapshot selection is enforced
+via period-priority tie-breaking (FY beats Q4 on same end-date),
+preventing CSV-row-order dependencies.
+
+### Per-pass audit trail
+
+Every data change — a corrected ticker mapping, a newly added
+subsidiary alias, a M&A ownership-effective-date update — is recorded
+in per-layer audit CSVs with run ID, timestamp, input/output row counts,
+and validation status. Five alias-map iterations are fully traceable
+via `Added_In_Iteration` / `Iteration_Reason` columns.
+
+### Idempotent snapshot-based change detection
+
+The change feed compares the current normalized inventory against the
+prior month's archived snapshot. Each detected event (status change,
+phase change, attribution change, new trial, removed trial) is
+identified by a SHA-1 hash of `Snapshot_Date_Current + Unique_ID +
+NCT_ID + Change_Type`, making the diff process idempotent — re-running
+the same snapshot pair produces zero new events. The event log is
+append-only across all runs; the dashboard surfaces 30-day and 90-day
+windows as filter expressions over the same underlying data.
+
+---
+
+## Known data attribution limitations
+
+Honesty about what isn't covered.
+
+**Sponsor alias coverage spot-check scope.** Nine of 50 Top-50
+companies were systematically reconciled. Material alias gaps were
+found and fixed in 6 of those 9 — driven by two recurring patterns:
+
+- **Japanese pharma regional subsidiaries** (Astellas, Otsuka, Takeda)
+  register US, EU, and Asia operations under distinct legal entities
+  (e.g., "Astellas Pharma Global Development, Inc.", "Otsuka
+  Pharmaceutical Development & Commercialization", "Millennium
+  Pharmaceuticals, Inc.").
+- **Western pharma historical acquisitions** (GSK's ViiV / Stiefel /
+  HGS, Sanofi's Pasteur / Genzyme / Kadmon, Novartis Vaccines /
+  Sandoz, BMS Karuna) register with verbose ClinicalTrials.gov
+  annotations of the form "X, a Y Company".
+
+Both patterns were closed via iterative alias-map additions. The
+41 unspot-checked Top-50 companies use the seed alias map only;
+expected materiality of remaining gaps is bounded by the per-company
+impact of audited cases (typically <100 active-status trials).
+
+**Spinoff and divestiture cases.** Five known spinoff cases are
+attributed by Option A — trials count under the entity that was the
+legal sponsor at registration, which is the more defensible choice for
+historical and time-series attribution:
+
+| Spinoff | Effective date | Pre-spinoff trials attributed to |
+|---|---|---|
+| Abbott → AbbVie | January 2013 | Abbott Laboratories |
+| Pfizer Upjohn → Viatris | November 2020 | Pfizer |
+| J&J Consumer → Kenvue | August 2023 | J&J |
+| Novartis → Sandoz | October 2023 | Novartis |
+| Novartis Vaccines → GSK | March 2015 | Novartis |
+
+**Non-US registry scope.** The clinical-trial layer sources from
+ClinicalTrials.gov only. Trials registered exclusively on jRCT (Japan),
+CTIS / EUCTR (EU), or ChiCTR (China) are not included. This
+particularly affects Japanese and European companies for region-only
+late-stage programs.
+
+**Verbose-annotation residual gap.** ClinicalTrials.gov prepends
+strings like "Wyeth is now a wholly owned subsidiary of Pfizer" to
+inherited-trial sponsor names. The dashboard's M&A overlay matches the
+bare entity names; verbose variants caught roughly 85% of these across
+spot-checks. Residual gap is approximately 800 trials across the
+Top-50 universe (~1.3% of inventory), predominantly Completed status.
+
+**Phase IV and observational trials.** Phase IV (post-approval) and
+non-phased / observational studies are correctly normalized but
+excluded from the bridge chart's Y-axis. They appear in the company
+detail panel for completeness.
+
+**Change feed cold-start.** The 30-day and 90-day change feed populates
+only when two or more dated snapshots exist. The first snapshot
+(2026-05-24) is archived; the next monthly refresh will trigger the
+first diff events. Until then, the change feed widget shows
+"Awaiting next snapshot."
+
+---
+
+## What this dashboard does NOT claim
+
+- Not a stock recommendation tool. No fair-value estimates, no price
+  targets, no valuation upside calculation.
+- R&D Intensity measures spending commitment, not pipeline quality or
+  clinical probability of success.
+- Cash / Market Cap measures balance-sheet buffer relative to valuation,
+  not whether a stock is undervalued.
+- Active Phase III count is a registry-derived exposure measure, not a
+  probability-of-approval forecast. Differences in trial size, indication,
+  and outsourcing model make cross-company productivity ratios indicative
+  only.
+- Trial counts are not asset counts. A single drug program may run
+  multiple trials. The dashboard treats each NCT as one unit.
+
+---
 
 ## Project structure
 
 ```
 .
-├── app.py                  # page layout, filters, section text, sector charts
-├── data.py                 # CSV loading + derived tables (all cached)
-├── charts.py               # lifecycle strip + company/map/quadrant charts
-├── requirements.txt        # pinned dependencies
+├── app.py                          # Streamlit page layout + section text
+├── data.py                         # Financial CSV loading + derived tables (cached)
+├── charts.py                       # Sector and company chart code
+├── requirements.txt                # Pinned dependencies
 ├── .gitignore
 ├── .streamlit/
-│   └── config.toml         # dark theme
-└── data/
-    ├── Company_Master.csv
-    ├── Quarterly_Financials.csv
-    └── Dashboard_Data_Notes.csv   # optional; app falls back gracefully if missing
+│   └── config.toml                 # Dark theme
+├── implementation_plan.md          # Full methodology spec (v4.3 + iter 5 notes)
+├── data/
+│   ├── Company_Master.csv          # Entity anchor
+│   ├── Quarterly_Financials.csv    # Financial layer
+│   ├── Dashboard_Data_Notes.csv    # Optional row-level reviewer notes
+│   └── clinical_trials/
+│       ├── Sponsor_Alias_Map.csv             # 328 aliases, 5 iterations
+│       ├── ClinicalTrials_Inventory.csv      # 62,551 raw matched trials
+│       ├── ClinicalTrials_Inventory_Normalized.csv
+│       ├── ClinicalTrials_Status_Summary.csv # 50 × 62 KPIs
+│       ├── ClinicalTrials_Change_Feed.csv    # event log (cold-start)
+│       ├── ClinicalTrials_Alias_Reconciliation.csv
+│       ├── ClinicalTrials_Fetch_Audit.csv
+│       ├── ClinicalTrials_Normalize_Audit.csv
+│       ├── ClinicalTrials_Summary_Audit.csv
+│       ├── ClinicalTrials_Change_Feed_Audit.csv
+│       ├── Expected_Zero_Companies.csv
+│       └── snapshots/
+│           └── 2026-05-24/                   # archived prior inventory
+│               └── ClinicalTrials_Inventory_Normalized.csv
+└── scripts/
+    ├── fetch_clinicaltrials_v2.py          # P1: ClinicalTrials.gov fetch
+    ├── archive_snapshot.py                 # P0: snapshot archival (run BEFORE P1)
+    ├── build_clinical_signals.py           # P2: status/phase normalization
+    ├── build_status_summary.py             # P3 + P3.1: per-company aggregation
+    ├── build_change_feed.py                # P4: change detection
+    └── update_seed_phase_*.py              # Iterations 2-5 alias-map patches
 ```
 
-`app.py` must be at the repository root, and the `data/` folder and
-`.streamlit/config.toml` must be committed. The app reads these files at runtime.
+The app reads committed CSV files only — **no external API calls at
+runtime.** Clinical data is refreshed via the monthly cadence below;
+the live app serves the most recent committed snapshot.
+
+---
 
 ## Run locally
 
@@ -191,11 +329,80 @@ streamlit run app.py
 
 The app opens at http://localhost:8501.
 
+---
+
+## Monthly clinical data refresh workflow
+
+The clinical data layer refreshes on a monthly cadence. **Run scripts
+in the exact order below** — the archive step must happen before P1
+overwrites the live inventory, otherwise the prior snapshot is lost
+and the next change-feed diff falls back to cold-start mode.
+
+### Required order
+
+```bash
+# Step 0 — Archive the current normalized inventory BEFORE re-fetching.
+# This locks the prior month's snapshot into data/clinical_trials/snapshots/
+# so the change feed has a baseline to diff against.
+python scripts/archive_snapshot.py
+
+# Step 1 — Re-fetch from ClinicalTrials.gov API v2 and rebuild the inventory.
+# Will overwrite ClinicalTrials_Inventory.csv with new data.
+python scripts/fetch_clinicaltrials_v2.py
+
+# Step 2 — Re-normalize status and phase columns from the new inventory.
+python scripts/build_clinical_signals.py
+
+# Step 3 — Re-aggregate per-company KPIs into the status summary.
+python scripts/build_status_summary.py
+
+# Step 4 — Detect changes vs. the prior archived snapshot and append
+# events to the change feed.
+python scripts/build_change_feed.py
+```
+
+Each script appends to its own audit CSV with run ID, validation
+status, and row-count diff. After running, verify the four audit logs
+show `Validation_Status = "PASS"` (the change feed audit will show
+`COLD_START` only on the very first run; on subsequent runs it should
+show `PASS` with a non-zero event count in `Events_Written`).
+
+### Suggested cadence
+
+Monthly. The 30-day and 90-day change-feed windows assume monthly
+snapshots; running more frequently produces larger event volumes
+(useful for active investigation), running less frequently degrades
+the 30-day window's usefulness.
+
+### Future automation note
+
+`archive_snapshot.py` is currently a standalone step that must be
+invoked manually before P1. For full automation, add a one-line
+`subprocess.run` call near the top of `fetch_clinicaltrials_v2.py`
+that invokes `archive_snapshot.py` before any inventory write. The
+script is idempotent — invoking it twice in one session is safe
+(it will not re-archive a snapshot directory that already exists).
+
+### Recovery from missed archive
+
+If a monthly refresh ran without invoking `archive_snapshot.py` first:
+- The prior month's snapshot is lost
+- The next change-feed run will detect this and fall back to cold-start
+  state for one cycle
+- The two-snapshot cadence resumes naturally on the following month
+- No corruption to the inventory or any prior audit logs
+
+This is a soft failure, not a hard one. Document it in `Reviewer_Notes`
+in the audit log if it happens.
+
+---
+
 ## Deploy to Streamlit Community Cloud
 
-1. Push this project to GitHub. Confirm `app.py` is at the repo root and that
-   `data/`, `.streamlit/config.toml`, and `requirements.txt` are committed.
-2. Make sure `.gitignore` excludes local/runtime files, for example:
+1. Push to GitHub. Confirm `app.py` is at the repo root and that
+   `data/`, `data/clinical_trials/`, `.streamlit/config.toml`, and
+   `requirements.txt` are committed.
+2. Add to `.gitignore`:
    ```
    .venv/
    __pycache__/
@@ -203,28 +410,50 @@ The app opens at http://localhost:8501.
    .DS_Store
    .streamlit/secrets.toml
    ```
-3. Go to Streamlit Community Cloud and create an app from the GitHub repo.
-4. Select the correct branch and set the main file path to `app.py`.
-5. Deploy. Future pushes to the selected branch redeploy the app automatically.
+3. Connect Streamlit Community Cloud to the GitHub repo, select the
+   branch, and set the main file path to `app.py`.
+4. Deploy. Future pushes redeploy automatically.
 
-## Current scope and future work
+Note: the deployed app reads committed data files only. It does NOT
+trigger the monthly refresh — that is a separate operational task run
+locally by the maintainer, with the regenerated CSVs committed and
+pushed for the deployed app to pick up.
 
-Built in this MVP:
+---
 
-- Sector Overview
-- Sector Trend
-- Intelligence Map
-- Strategic Posture Quadrant
-- Lifecycle Footprint
-- Financial Snapshot
-- Financial Trend
-- Data Sources / provenance panel
+## Roadmap
 
-Planned later:
+| Stage | Status |
+|---|---|
+| MVP-1 financial dashboard | Complete |
+| MVP-2 P1 — clinical inventory | Complete |
+| MVP-2 P2 — status/phase normalization | Complete |
+| MVP-2 P3 — per-company status summary | Complete |
+| MVP-2 P3.1 — Active × Phase cross-tab columns | Complete |
+| MVP-2 P4 — 30/90-day change feed | Cold-start; activates on next monthly refresh |
+| MVP-2 P5a — bridge chart (Clinical Productivity vs. R&D Spend) | Complete |
+| MVP-2 P5b — company clinical KPI cards + NCT detail panel | Pending |
+| MVP-2 P5c — lifecycle column fix | Pending |
+| MVP-2 P5d — change feed scaffold + recent registry updates | Pending |
+| MVP-2 P5e — README polish + screenshot + deploy verification | Pending |
+| MVP-2 P6 — auto-integrate archive into P1 fetch | Pending; manual workaround documented above |
+| MVP-3 relationship/network map | Future |
+| MVP-3 WHO ICTRP integration for non-US registries | Future |
+| MVP-3 asset-level pipeline depth (Phase × indication × modality) | Future |
 
-- Relationship/network map using reliable relationship edges such as shared
-  indication, modality, partnership, or competitive overlap.
-- Asset-level pipeline depth, clinical catalysts, and product-level revenue
-  concentration.
-- Valuation lens such as EV/Sales, revenue growth, FCF, or forward estimates,
-  if reliable inputs are added.
+---
+
+## Acknowledgements and references
+
+Data sources:
+- Company financials: SEC EDGAR, company investor relations,
+  Tokyo Stock Exchange disclosure, Hong Kong Stock Exchange disclosure,
+  Euronext / SIX / LSE disclosure
+- Clinical trials: ClinicalTrials.gov API v2 (modern REST API, OpenAPI 3.0)
+- FX rates: period-end historical rates (EUR 1.08, JPY 0.00685, HKD 0.128)
+
+Reference works that shaped the methodology choices:
+- Citeline Pharmaprojects / Trialtrove (industry-standard pipeline tracker,
+  benchmark for sponsor matching discipline)
+- ClinicalTrials.gov API v2 documentation
+- SEC 8-K filings for M&A ownership-effective-date verification

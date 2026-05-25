@@ -9,8 +9,8 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from data import load_master, load_financials, get_latest_financials, get_lifecycle, get_positioning, get_sector_ratio_trend
-from charts import render_lifecycle_strip, render_financial_trend, render_intelligence_map, render_strategic_posture_quadrant
+from data import load_master, load_financials, get_latest_financials, get_lifecycle, get_positioning, get_sector_ratio_trend, load_clinical_status_summary, load_expected_zero, build_bridge_chart_data
+from charts import render_lifecycle_strip, render_financial_trend, render_intelligence_map, render_strategic_posture_quadrant, render_bridge_chart
 
 st.set_page_config(
     page_title="Biopharma Command Center",
@@ -557,6 +557,78 @@ with st.container(border=True):
     )
 
     render_strategic_posture_quadrant(posture_df, uid)
+
+
+# ── Clinical Productivity vs. R&D Spend ──────────────────────────────
+with st.container(border=True):
+    st.subheader("Clinical Productivity vs. R&D Spend")
+    question_prompt("Which companies show the largest late-stage clinical footprint relative to reported R&D investment?")
+
+    # Y-axis toggle
+    y_axis_choice = st.radio(
+        "Y-axis metric",
+        options=["Active Phase III count", "Phase-weighted active exposure"],
+        index=0,
+        horizontal=True,
+        key="bridge_chart_y_axis",
+        help="Select Y-axis metric: Active Phase III count or Phase-weighted clinical exposure score."
+    )
+    y_choice_key = "phase_iii_count" if y_axis_choice == "Active Phase III count" else "weighted_score"
+
+    status_summary = load_clinical_status_summary()
+    df_bridge = build_bridge_chart_data(master, latest, status_summary)
+
+    # 4a Validation Row count check
+    if len(df_bridge) < 35 or len(df_bridge) > 50:
+        st.warning(f"Warning: Unexpected number of companies in bridge chart data: {len(df_bridge)} (expected 40-46). Some data might be missing.")
+
+    # 4b Expected-zero verification
+    expected_zero_check_uids = ["CMP-022", "CMP-043", "CMP-047", "CMP-049"]
+    for ez_uid in expected_zero_check_uids:
+        if ez_uid in df_bridge["Unique_ID"].values:
+            st.warning(f"Warning: Expected-zero company {ez_uid} was not correctly filtered out of the bridge chart.")
+
+    # Render chart
+    render_bridge_chart(df_bridge, y_choice_key, selected_unique_id=uid)
+
+    # 3g Footnote construct
+    ez_df = load_expected_zero()
+    expected_zero_names = ", ".join(ez_df["Company_Name"].tolist())
+
+    # Find companies excluded for missing R&D or Market Cap
+    all_master_uids = set(master["Unique_ID"].tolist())
+    ez_uids = set(ez_df["Unique_ID"].tolist())
+    included_uids = set(df_bridge["Unique_ID"].tolist())
+    missing_rd_uids = all_master_uids - ez_uids - included_uids
+
+    # Map missing R&D UIDs to names
+    missing_rd_names_list = sorted([
+        master[master["Unique_ID"] == m_uid]["Company Name"].iloc[0]
+        for m_uid in missing_rd_uids
+        if not master[master["Unique_ID"] == m_uid].empty
+    ])
+    missing_rd_names = ", ".join(missing_rd_names_list)
+
+    footnote_text = f"Showing {len(df_bridge)} of 50 companies. Excluded: 4 non-pharma businesses ({expected_zero_names} — animal health, royalty financier, and life-sciences tools)."
+    if missing_rd_names:
+        footnote_text += f" {len(missing_rd_names_list)} additional company/companies excluded due to missing latest-period R&D or market cap disclosure ({missing_rd_names})."
+
+    st.caption(footnote_text)
+
+    # 3h Methodology Disclaimer
+    st.caption(
+        "This chart links reported R&D investment with ClinicalTrials.gov late-stage exposure. "
+        "Active Phase III count is a registry-based exposure measure, not a probability-of-success "
+        "forecast, asset quality measure, or valuation upside indicator. Differences in trial size, "
+        "indication, and outsourcing model make cross-company comparisons indicative only."
+    )
+    st.caption(
+        "Companies with generics-led or specialty-branded business models "
+        "(e.g., Sun Pharmaceutical Industries) typically have lower R&D "
+        "Intensity than discovery-led peers and will appear far to the "
+        "left on this chart. This reflects business-model differences, "
+        "not pipeline quality or commercial weakness."
+    )
 
 
 # ── Header ──────────────────────────────────────────────────────────

@@ -234,3 +234,126 @@ def get_positioning(master: pd.DataFrame, latest: pd.DataFrame) -> pd.DataFrame:
     df["positioning"] = df.apply(compute_pos, axis=1)
     return df[["Unique_ID", "positioning"]]
 
+
+@st.cache_data
+def load_clinical_status_summary() -> pd.DataFrame:
+    """Load ClinicalTrials_Status_Summary.csv with type coercion."""
+    path = DATA_DIR / "clinical_trials" / "ClinicalTrials_Status_Summary.csv"
+    df = pd.read_csv(path, encoding="utf-8-sig")
+    # Coerce numeric columns
+    numeric_cols = [c for c in df.columns if c.startswith(("Owned_", "Participated_"))]
+    for col in numeric_cols:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    # Coerce boolean column
+    df["Expected_Zero"] = df["Expected_Zero"].astype(str).str.upper() == "TRUE"
+    return df
+
+
+@st.cache_data
+def load_expected_zero() -> pd.DataFrame:
+    """Load Expected_Zero_Companies.csv."""
+    path = DATA_DIR / "clinical_trials" / "Expected_Zero_Companies.csv"
+    if not path.exists():
+        return pd.DataFrame(columns=["Unique_ID", "Company_Name", "Reason"])
+    return pd.read_csv(path, encoding="utf-8-sig")
+
+
+@st.cache_data
+def build_bridge_chart_data(master: pd.DataFrame, latest_financials: pd.DataFrame, status_summary: pd.DataFrame) -> pd.DataFrame:
+    """One row per company with the columns the bridge chart needs.
+
+    Filters:
+      - Excludes companies where Expected_Zero == True
+      - Excludes companies where latest R&D spend is null OR <= 0
+      - Excludes companies where Market_Cap is null OR <= 0
+    """
+    df_base = master[["Unique_ID", "Company Name"]].copy()
+    df_base = df_base.rename(columns={"Company Name": "Company_Name"})
+    
+    # 1. R&D annualization helper
+    def annualize_rd(row):
+        period = row.get("Period_Type")
+        q_rd = row.get("Q_RD")
+        if pd.isna(q_rd) or q_rd is None:
+            return None
+        try:
+            q_rd = float(q_rd)
+        except ValueError:
+            return None
+            
+        if period == "FY":
+            return q_rd
+        elif period == "9M":
+            return q_rd * (4.0 / 3.0)
+        elif period == "H1":
+            return q_rd * 2.0
+        elif period in ("Q1", "Q2", "Q3", "Q4"):
+            return q_rd * 4.0
+        return None
+
+    # 2. Period label helper
+    def get_period_label(row):
+        period = row.get("Period_Type")
+        year = row.get("Calendar_Year")
+        if pd.isna(period) or period is None or period == "":
+            return ""
+        year_str = str(int(year)) if pd.notna(year) else ""
+        return f"{period} {year_str}".strip()
+
+    # Merge master with latest financials
+    df_merged = df_base.merge(
+        latest_financials[["Unique_ID", "Market_Cap_USD_M", "Q_RD", "Period_Type", "Calendar_Year"]],
+        on="Unique_ID",
+        how="left"
+    )
+    
+    df_merged["RD_Annualized_USD_M"] = df_merged.apply(annualize_rd, axis=1)
+    df_merged["Latest_Period_Label"] = df_merged.apply(get_period_label, axis=1)
+    
+    # Merge positioning
+    df_pos = get_positioning(master, latest_financials)
+    df_merged = df_merged.merge(df_pos, on="Unique_ID", how="left")
+    df_merged = df_merged.rename(columns={"positioning": "Positioning"})
+    
+    # Load and merge expected zero UIDs to be robust
+    ez_df = load_expected_zero()
+    ez_uids = set(ez_df["Unique_ID"].tolist())
+    
+    # Merge clinical summary
+    df_merged = df_merged.merge(
+        status_summary[[
+            "Unique_ID", "Expected_Zero",
+            "Owned_Active_Phase_III_Count", "Owned_Active_Phase_Weighted_Score",
+            "Owned_Active_Pipeline_Count", "Owned_Operational_Risk_Count",
+            "Owned_Active_Phase_I_Count", "Owned_Active_Phase_II_Count",
+            "Participated_Active_Phase_III_Count"
+        ]],
+        on="Unique_ID",
+        how="left"
+    )
+    
+    df_merged["Expected_Zero"] = df_merged["Expected_Zero"].fillna(False) | df_merged["Unique_ID"].isin(ez_uids)
+    
+    # Rename columns to match specifications
+    df_merged = df_merged.rename(columns={
+        "Owned_Active_Phase_III_Count": "Phase_III_Count_Active",
+        "Owned_Active_Phase_Weighted_Score": "Phase_Weighted_Score_Active",
+        "Owned_Active_Pipeline_Count": "Active_Pipeline_Count",
+        "Owned_Operational_Risk_Count": "Operational_Risk_Count",
+        "Owned_Active_Phase_I_Count": "Phase_I_Active_Count",
+        "Owned_Active_Phase_II_Count": "Phase_II_Active_Count",
+        "Participated_Active_Phase_III_Count": "Participated_Phase_III_Active_Count"
+    })
+    
+    df_merged["Phase_III_Active_Count"] = df_merged["Phase_III_Count_Active"]
+    
+    # Filters
+    df_filtered = df_merged[
+        df_merged["RD_Annualized_USD_M"].notna() & (df_merged["RD_Annualized_USD_M"] > 0) &
+        df_merged["Market_Cap_USD_M"].notna() & (df_merged["Market_Cap_USD_M"] > 0) &
+        (df_merged["Expected_Zero"] != True)
+    ].copy()
+    
+    return df_filtered.reset_index(drop=True)
+
+

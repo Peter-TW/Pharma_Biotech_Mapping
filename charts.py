@@ -519,3 +519,203 @@ def render_strategic_posture_quadrant(plot_df, selected_uid):
         "shown clamped at the top edge (100%). This highlights financial capacity "
         "and research commitment, not valuation upside or clinical success probability."
     )
+
+
+def render_bridge_chart(df_bridge, y_axis_choice, selected_unique_id=None):
+    """Render a bubble scatter chart linking R&D spend and clinical pipeline exposure."""
+    # Ensure there is enough data
+    if len(df_bridge) < 3:
+        st.info("Not enough data to plot the bridge chart.")
+        return
+
+    # 1. Determine Y-axis variables
+    if y_axis_choice == "phase_iii_count":
+        y_col = "Phase_III_Count_Active"
+        y_title = "Active Phase III trial count"
+    else:
+        y_col = "Phase_Weighted_Score_Active"
+        y_title = "Phase-weighted clinical exposure"
+
+    # 2. Bubble size scaling based on log10(Market_Cap)
+    log_mcap = np.log10(df_bridge["Market_Cap_USD_M"].clip(lower=1.0))
+    min_log = log_mcap.min()
+    max_log = log_mcap.max()
+    if min_log == max_log:
+        df_bridge["bubble_size"] = 25.0
+    else:
+        df_bridge["bubble_size"] = 12.0 + (log_mcap - min_log) / (max_log - min_log) * (70.0 - 12.0)
+
+    # 3. Categorical colors (matching posture colors)
+    positioning_colors = {
+        "Full-cycle leader": "#00B4D8",
+        "R&D-driven commercial": "#2ECC71",
+        "Commercial-led": "#F39C12",
+        "Pipeline-stage challenger": "#FF758F",
+    }
+    fallback_color = "#888888"
+
+    fig = go.Figure()
+
+    # Draw companies grouped by positioning
+    for pos in sorted(df_bridge["Positioning"].fillna("Unclassified").unique()):
+        sub = df_bridge[df_bridge["Positioning"].fillna("Unclassified") == pos]
+        if sub.empty:
+            continue
+
+        custom_data = list(zip(
+            sub["Company_Name"],
+            sub["Positioning"],
+            sub["RD_Annualized_USD_M"],
+            sub["Latest_Period_Label"],
+            sub["Market_Cap_USD_M"],
+            sub["Active_Pipeline_Count"],
+            sub["Operational_Risk_Count"],
+            sub["Phase_I_Active_Count"],
+            sub["Phase_II_Active_Count"],
+            sub["Phase_III_Active_Count"],
+            sub["Participated_Phase_III_Active_Count"]
+        ))
+
+        fig.add_trace(
+            go.Scatter(
+                x=sub["RD_Annualized_USD_M"],
+                y=sub[y_col],
+                mode="markers",
+                name=pos,
+                marker=dict(
+                    size=sub["bubble_size"],
+                    sizemode="diameter",
+                    color=positioning_colors.get(pos, fallback_color),
+                    line=dict(width=1, color="rgba(255,255,255,0.3)"),
+                ),
+                customdata=custom_data,
+                hovertemplate=(
+                    "<b>%{customdata[0]}</b><br>"
+                    "Positioning: %{customdata[1]}<br>"
+                    "───────────────────────────<br>"
+                    "Latest R&D (annualized):  $%{customdata[2]:,.0f}M (%{customdata[3]})<br>"
+                    "Market Cap:               $%{customdata[4]:,.0f}M<br>"
+                    "───────────────────────────<br>"
+                    "Active Pipeline:          %{customdata[5]}<br>"
+                    "Operational Risk:         %{customdata[6]}<br>"
+                    "───────────────────────────<br>"
+                    "Phase I (active):         %{customdata[7]}<br>"
+                    "Phase II (active):        %{customdata[8]}<br>"
+                    "Phase III (active):       %{customdata[9]}<br>"
+                    "───────────────────────────<br>"
+                    "Ecosystem Phase III:      %{customdata[10]}<br>"
+                    "  (incl. collaborator-only trials)<extra></extra>"
+                ),
+            )
+        )
+
+    # 4. Draw selection highlight
+    if selected_unique_id:
+        sel_row = df_bridge[df_bridge["Unique_ID"] == selected_unique_id]
+        if not sel_row.empty:
+            row = sel_row.iloc[0]
+            fig.add_trace(
+                go.Scatter(
+                    x=[row["RD_Annualized_USD_M"]],
+                    y=[row[y_col]],
+                    mode="markers",
+                    name="Selected",
+                    marker=dict(
+                        size=[row["bubble_size"]],
+                        sizemode="diameter",
+                        color="rgba(0,0,0,0)",
+                        line=dict(width=2, color="#FFFFFF"),
+                    ),
+                    showlegend=False,
+                    hoverinfo="skip",
+                )
+            )
+
+    # Median lines calculation
+    median_x = df_bridge["RD_Annualized_USD_M"].median()
+    median_y = df_bridge[y_col].median()
+
+    x_min = 1
+    x_max = 10 ** (np.ceil(np.log10(df_bridge["RD_Annualized_USD_M"].max())))
+
+    # X-axis ticks (log scale)
+    tickvals = [1, 3, 10, 30, 100, 300, 1000, 3000, 10000, 30000]
+    ticktext = ["$1M", "$3M", "$10M", "$30M", "$100M", "$300M", "$1B", "$3B", "$10B", "$30B"]
+
+    y_max = df_bridge[y_col].max() * 1.15
+    y_range = [0, y_max]
+
+    fig.update_layout(
+        height=600,
+        margin=dict(l=70, r=30, t=20, b=80),
+        xaxis=dict(
+            title="Annualized R&D spend (USD M, log scale)",
+            type="log",
+            range=[np.log10(x_min), np.log10(x_max)],
+            tickvals=tickvals,
+            ticktext=ticktext,
+            showgrid=True,
+            gridcolor="rgba(255,255,255,0.15)",
+            zeroline=False,
+        ),
+        yaxis=dict(
+            title=y_title,
+            range=y_range,
+            showgrid=True,
+            gridcolor="rgba(255,255,255,0.15)",
+            zeroline=False,
+        ),
+        shapes=[
+            # Median R&D
+            dict(
+                type="line",
+                x0=median_x, x1=median_x,
+                y0=0, y1=y_max,
+                line=dict(color="rgba(255,255,255,0.5)", width=1, dash="dash"),
+            ),
+            # Median Y value
+            dict(
+                type="line",
+                x0=x_min, x1=x_max,
+                y0=median_y, y1=median_y,
+                line=dict(color="rgba(255,255,255,0.5)", width=1, dash="dash"),
+            ),
+        ],
+        annotations=[
+            # Median R&D label
+            dict(
+                x=median_x, y=y_max * 0.98,
+                text="Median R&D",
+                showarrow=False,
+                xref="x", yref="y",
+                xanchor="center",
+                font=dict(size=10, color="rgba(255,255,255,0.6)"),
+                bgcolor="#0E1117",
+            ),
+            # Median Y label
+            dict(
+                x=x_max * 0.9, y=median_y,
+                text=f"Median {y_title.replace('Active ', '').replace(' trial count', '')}",
+                showarrow=False,
+                xref="x", yref="y",
+                xanchor="right",
+                font=dict(size=10, color="rgba(255,255,255,0.6)"),
+                bgcolor="#0E1117",
+            ),
+        ],
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        legend=dict(
+            orientation="v",
+            yanchor="top",
+            y=0.98,
+            xanchor="right",
+            x=0.98,
+            font=dict(size=11, color="#E6E9EF"),
+            bgcolor="rgba(14,17,23,0.6)",
+        ),
+        hovermode="closest",
+    )
+
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
