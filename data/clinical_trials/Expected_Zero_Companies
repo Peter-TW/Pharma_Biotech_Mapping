@@ -1,0 +1,5 @@
+Unique_ID,Company_Name,Reason,Exclude_From_Sector_Charts,Lifecycle_Column_Fix,Reviewer_Notes
+CMP-022,Zoetis Inc.,Animal health,TRUE,"Discovery=TRUE, Preclinical=TRUE, Clinical Trials=FALSE, FDA Review=TRUE, Commercial=TRUE","Expected zero: animal health company, no human trials registered on ClinicalTrials.gov."
+CMP-043,Royalty Pharma plc,Royalty financier,TRUE,"Discovery=FALSE, Preclinical=FALSE, Clinical Trials=FALSE, FDA Review=FALSE, Commercial=TRUE (recommended to exclude entirely; treat as financial-only entity)","Expected zero: royalty-financing business model, does not conduct clinical trials."
+CMP-047,Cytiva,Life-sciences tools,TRUE,"Discovery=FALSE, Preclinical=FALSE, Clinical Trials=FALSE, FDA Review=FALSE, Commercial=FALSE (exclude from lifecycle-based views)","Expected zero: life-sciences tools and manufacturing, not a drug developer."
+CMP-049,Elanco Animal Health Incorporated,Animal health,TRUE,"Discovery=TRUE, Preclinical=TRUE, Clinical Trials=FALSE, FDA Review=TRUE, Commercial=TRUE","Expected zero: animal health company, no human trials registered on ClinicalTrials.gov."
