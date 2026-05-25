@@ -9,7 +9,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from data import load_master, load_financials, get_latest_financials, get_lifecycle, get_positioning, get_sector_ratio_trend, load_clinical_status_summary, load_expected_zero, build_bridge_chart_data
+from data import load_master, load_financials, get_latest_financials, get_lifecycle, get_positioning, get_sector_ratio_trend, load_clinical_status_summary, load_expected_zero, build_bridge_chart_data, load_clinical_inventory_normalized, get_company_clinical_inventory
 from charts import render_lifecycle_strip, render_financial_trend, render_intelligence_map, render_strategic_posture_quadrant, render_bridge_chart
 
 st.set_page_config(
@@ -718,6 +718,203 @@ with st.container(border=True):
         )
     else:
         st.info("No financial data available for this company.")
+
+
+# ── Clinical Trial Footprint ─────────────────────────────────────────
+with st.container(border=True):
+    st.subheader("Clinical Trial Footprint")
+    question_prompt("What active, late-stage, and risk-flagged ClinicalTrials.gov records support this company’s clinical footprint?")
+
+    # Load data
+    try:
+        clinical_inventory = load_clinical_inventory_normalized()
+        # Find if expected zero
+        ez_df = load_expected_zero()
+        is_expected_zero = uid in ez_df["Unique_ID"].values
+        
+        # Load status summary for KPI cards
+        status_sum_df = load_clinical_status_summary()
+        company_summary = status_sum_df[status_sum_df["Unique_ID"] == uid]
+        
+        # Determine if expected zero based on either source
+        if not company_summary.empty:
+            summary_row = company_summary.iloc[0]
+            is_expected_zero = is_expected_zero or bool(summary_row.get("Expected_Zero", False))
+        else:
+            summary_row = None
+            
+        data_loaded = True
+    except Exception as e:
+        st.error(f"Error loading clinical data: {e}")
+        data_loaded = False
+
+    if data_loaded:
+        # Check if the summary is completely missing
+        if summary_row is None and not is_expected_zero:
+            st.info("No ClinicalTrials.gov summary data is available for this company.")
+        else:
+            # Expected zero note
+            if is_expected_zero:
+                st.warning("This company is marked as expected-zero for the ClinicalTrials.gov human-trial layer, based on its business model / scope.")
+            
+            # Show KPI cards
+            if summary_row is not None:
+                k1, k2, k3, k4, k5, k6 = st.columns(6)
+                
+                # Retrieve metrics safely, default to 0 if NaN/None
+                def get_kpi_val(col_name):
+                    val = summary_row.get(col_name, 0)
+                    if pd.isna(val) or val is None:
+                        return 0
+                    return int(val)
+                
+                k1.metric("Owned Active Pipeline", f"{get_kpi_val('Owned_Active_Pipeline_Count')}")
+                k2.metric("Owned Recruiting", f"{get_kpi_val('Owned_Recruiting_Count')}")
+                k3.metric("Owned Active Not Recruiting", f"{get_kpi_val('Owned_Active_Not_Recruiting_Count')}")
+                k4.metric("Owned Operational Risk", f"{get_kpi_val('Owned_Operational_Risk_Count')}")
+                k5.metric("Owned Phase III", f"{get_kpi_val('Owned_Phase_III_Count_Exclusive')}")
+                k6.metric("Participated Trials", f"{get_kpi_val('Participated_All_Trials')}")
+                
+            # Scope toggle
+            scope_choice = st.radio(
+                "Clinical record scope",
+                options=["Owned footprint", "Participated / collaborator exposure"],
+                index=0,
+                horizontal=True,
+                key="clinical_record_scope_toggle",
+                help="Select the ownership scope of clinical trials to view."
+            )
+            
+            st.markdown(
+                '<div style="font-size:13px; color:#A3B3C2; margin-top:-10px; margin-bottom:15px;">'
+                '<i>Owned footprint includes lead sponsor, subsidiaries, and acquired entities in the current portfolio. '
+                'Participated / collaborator exposure also includes collaborator-only records.</i>'
+                '</div>',
+                unsafe_allow_html=True
+            )
+            
+            # Fetch NCT-level inventory
+            comp_inv = get_company_clinical_inventory(clinical_inventory, uid, scope_choice)
+            
+            # Filters Layout
+            f1, f2, f3 = st.columns([2, 2, 1])
+            
+            status_filter = f1.selectbox(
+                "Status filter",
+                options=["All surfaced statuses", "Active Pipeline only", "Operational Risk only", "All statuses"],
+                index=0,
+                key="clinical_status_filter"
+            )
+            
+            phase_filter = f2.selectbox(
+                "Phase filter",
+                options=["All phases", "Phase III", "Phase II", "Phase I", "Mixed Phase", "Other / NA"],
+                index=0,
+                key="clinical_phase_filter"
+            )
+            
+            limit_choice = f3.selectbox(
+                "Rows to show",
+                options=["10", "25", "50", "All"],
+                index=1,
+                key="clinical_rows_limit_select"
+            )
+            
+            # Filter the records
+            filtered_df = comp_inv.copy()
+            
+            # 1. Phase Filter
+            if phase_filter != "All phases":
+                filtered_df = filtered_df[filtered_df["Phase_Bucket_Exclusive"] == phase_filter]
+                
+            # 2. Status Filter
+            if status_filter == "All surfaced statuses":
+                surfaced_statuses = ["Recruiting", "Active Not Recruiting", "Suspended", "Terminated"]
+                temp_filtered = filtered_df[filtered_df["Status_Bucket"].isin(surfaced_statuses)]
+                # If none exist, show most recent records (fall back to all statuses)
+                if not temp_filtered.empty:
+                    filtered_df = temp_filtered
+            elif status_filter == "Active Pipeline only":
+                filtered_df = filtered_df[filtered_df["Status_Group"] == "Active Pipeline"]
+            elif status_filter == "Operational Risk only":
+                filtered_df = filtered_df[filtered_df["Status_Group"] == "Operational Risk"]
+            # "All statuses" doesn't filter by status
+            
+            # Table display or empty handling
+            if filtered_df.empty:
+                st.info("No matched ClinicalTrials.gov records are available for this company under the selected scope.")
+                if is_expected_zero:
+                    st.caption("This is expected for this company in the current MVP scope.")
+                else:
+                    st.caption("This may reflect a sponsor-alias coverage gap or a company with no ClinicalTrials.gov footprint under the current matching rules.")
+            else:
+                # Apply row limit
+                if limit_choice != "All":
+                    limit_val = int(limit_choice)
+                    display_df_raw = filtered_df.head(limit_val)
+                else:
+                    display_df_raw = filtered_df
+                    
+                # Prepare columns for presentation
+                display_df = pd.DataFrame()
+                display_df["NCT ID"] = display_df_raw["NCT_ID"].fillna("")
+                display_df["Brief Title"] = display_df_raw["Brief_Title"].fillna("")
+                display_df["Status"] = display_df_raw["Status_Bucket"].fillna("")
+                display_df["Phase"] = display_df_raw["Phase_Bucket_Exclusive"].fillna("")
+                display_df["Sponsor Role"] = display_df_raw["Sponsor_Match_Type"].fillna("")
+                display_df["Ownership Context"] = display_df_raw["Ownership_Context"].fillna("")
+                
+                # Format date nicely
+                date_vals = pd.to_datetime(display_df_raw["Last_Update_Submit_Date"])
+                display_df["Last Update"] = date_vals.dt.strftime("%Y-%m-%d").fillna("")
+                
+                display_df["Study Link"] = display_df_raw["Study_URL"].fillna("")
+                
+                # Column Configuration
+                col_config = {
+                    "NCT ID": st.column_config.TextColumn("NCT ID", width="small"),
+                    "Brief Title": st.column_config.TextColumn("Brief Title", width="large"),
+                    "Status": st.column_config.TextColumn("Status", width="medium"),
+                    "Phase": st.column_config.TextColumn("Phase", width="small"),
+                    "Sponsor Role": st.column_config.TextColumn("Sponsor Role", width="medium"),
+                    "Ownership Context": st.column_config.TextColumn("Ownership Context", width="medium"),
+                    "Last Update": st.column_config.TextColumn("Last Update", width="small"),
+                    "Study Link": st.column_config.LinkColumn("Study Link", display_text="Open NCT", width="small")
+                }
+                
+                st.dataframe(
+                    display_df,
+                    column_config=col_config,
+                    use_container_width=True,
+                    hide_index=True
+                )
+                
+            # Notes and disclaimers below the table
+            main_note = (
+                "Clinical trial records are sourced from ClinicalTrials.gov and attributed using the project’s "
+                "sponsor-alias and M&A ownership rules. Counts reflect registry exposure, not clinical success "
+                "probability, asset quality, or valuation upside."
+            )
+            if scope_choice == "Owned footprint":
+                scope_note = "This view excludes collaborator-only records and is the default scope for headline clinical counts."
+            else:
+                scope_note = "This view includes collaborator-only records, so it represents ecosystem participation rather than owned clinical footprint."
+            
+            non_us_note = (
+                "ClinicalTrials.gov does not cover every non-US registry-only trial. "
+                "Region-only studies on jRCT, CTIS/EUCTR, or ChiCTR may be absent."
+            )
+            
+            st.markdown(
+                f'<div style="font-size:12px; color:#8C9BA5; margin-top:15px; padding:10px 14px; '
+                f'border-radius:6px; background-color:#161B22; border:1px solid #21262D; line-height:1.6;">'
+                f'📢 &nbsp;<b>Attribution Note:</b> {main_note}<br/>'
+                f'🔍 &nbsp;<b>Scope Context:</b> {scope_note}<br/>'
+                f'🌎 &nbsp;<b>Geographic Coverage:</b> {non_us_note}'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+
 
 # ── Financial Trend ─────────────────────────────────────────────────
 with st.container(border=True):

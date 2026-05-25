@@ -237,8 +237,15 @@ def get_positioning(master: pd.DataFrame, latest: pd.DataFrame) -> pd.DataFrame:
 
 @st.cache_data
 def load_clinical_status_summary() -> pd.DataFrame:
-    """Load ClinicalTrials_Status_Summary.csv with type coercion."""
+    """Load ClinicalTrials_Status_Summary.csv with type coercion. Returns empty if missing."""
     path = DATA_DIR / "clinical_trials" / "ClinicalTrials_Status_Summary.csv"
+    if not path.exists():
+        return pd.DataFrame(columns=[
+            "Fetch_Date", "Unique_ID", "Company_Name", "Expected_Zero",
+            "Owned_Active_Pipeline_Count", "Owned_Recruiting_Count",
+            "Owned_Active_Not_Recruiting_Count", "Owned_Operational_Risk_Count",
+            "Owned_Phase_III_Count_Exclusive", "Participated_All_Trials"
+        ])
     df = pd.read_csv(path, encoding="utf-8-sig")
     # Coerce numeric columns
     numeric_cols = [c for c in df.columns if c.startswith(("Owned_", "Participated_"))]
@@ -355,5 +362,107 @@ def build_bridge_chart_data(master: pd.DataFrame, latest_financials: pd.DataFram
     ].copy()
     
     return df_filtered.reset_index(drop=True)
+
+
+@st.cache_data
+def load_clinical_inventory_normalized() -> pd.DataFrame:
+    """Load ClinicalTrials_Inventory_Normalized.csv with type coercion and date parsing."""
+    path = DATA_DIR / "clinical_trials" / "ClinicalTrials_Inventory_Normalized.csv"
+    expected_cols = [
+        "Unique_ID", "Company_Name", "NCT_ID", "Brief_Title", "Official_Title",
+        "Overall_Status", "Status_Bucket", "Status_Group", "Phases_Raw",
+        "Phase_Bucket_Exclusive", "Phase_Buckets_Inclusive", "Phase_Weight",
+        "Lead_Sponsor", "Collaborators", "Sponsor_Match_Type", "Sponsor_Match_Confidence",
+        "Ownership_Context", "Counts_As_Owned_Trial", "Counts_As_Participated_In",
+        "Conditions", "Interventions", "Study_Type", "Enrollment", "Start_Date",
+        "Primary_Completion_Date", "Completion_Date", "Last_Update_Submit_Date",
+        "Study_URL", "Reviewer_Notes"
+    ]
+    if not path.exists():
+        return pd.DataFrame(columns=expected_cols)
+    
+    # Read the file preserving NCT_ID as string
+    df = pd.read_csv(path, encoding="utf-8-sig", dtype={"NCT_ID": str})
+    
+    # Parse date columns where present
+    date_cols = ["Last_Update_Submit_Date", "Start_Date", "Primary_Completion_Date", "Completion_Date", "Fetched_At_UTC"]
+    for col in date_cols:
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors="coerce")
+            
+    # Coerce booleans for owned/participated flags
+    for col in ["Counts_As_Owned_Trial", "Counts_As_Participated_In"]:
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.strip().str.upper() == "TRUE"
+            
+    # If Study_URL is missing but NCT_ID exists, construct
+    if "Study_URL" in df.columns:
+        mask = df["Study_URL"].isna() & df["NCT_ID"].notna()
+        df.loc[mask, "Study_URL"] = "https://clinicaltrials.gov/study/" + df.loc[mask, "NCT_ID"]
+    else:
+        df["Study_URL"] = ""
+        mask = df["NCT_ID"].notna()
+        df.loc[mask, "Study_URL"] = "https://clinicaltrials.gov/study/" + df.loc[mask, "NCT_ID"]
+
+    # Keep only the expected columns that are present, and add missing ones
+    for col in expected_cols:
+        if col not in df.columns:
+            df[col] = None
+            
+    return df[expected_cols]
+
+
+@st.cache_data
+def get_company_clinical_inventory(clinical_inventory: pd.DataFrame, uid: str, scope: str) -> pd.DataFrame:
+    """Filter inventory by Unique_ID and scope, then sort by priority rules."""
+    if clinical_inventory.empty:
+        return clinical_inventory.copy()
+        
+    # Filter by Unique_ID
+    df = clinical_inventory[clinical_inventory["Unique_ID"] == uid].copy()
+    if df.empty:
+        return df
+
+    # Apply the chosen scope
+    # scope values: "Owned footprint", "Participated / collaborator exposure"
+    if scope == "Owned footprint":
+        df = df[df["Counts_As_Owned_Trial"] == True]
+    elif scope == "Participated / collaborator exposure":
+        df = df[df["Counts_As_Participated_In"] == True]
+        
+    if df.empty:
+        return df
+        
+    # Sort priority mapping
+    status_prio_map = {
+        "Active Pipeline": 0,
+        "Operational Risk": 1,
+        "Other": 2
+    }
+    phase_prio_map = {
+        "Phase III": 0,
+        "Phase II": 1,
+        "Mixed Phase": 2,
+        "Phase I": 3,
+        "Other / NA": 4
+    }
+    
+    # Create temp sort columns
+    df["_status_prio"] = df["Status_Group"].fillna("Other").astype(str).str.strip().map(status_prio_map).fillna(2)
+    df["_phase_prio"] = df["Phase_Bucket_Exclusive"].fillna("Other / NA").astype(str).str.strip().map(phase_prio_map).fillna(4)
+    
+    # Sort by:
+    # 1. _status_prio ascending
+    # 2. _phase_prio ascending
+    # 3. Last_Update_Submit_Date descending
+    df = df.sort_values(
+        by=["_status_prio", "_phase_prio", "Last_Update_Submit_Date"],
+        ascending=[True, True, False]
+    )
+    
+    # Drop temp columns
+    df = df.drop(columns=["_status_prio", "_phase_prio"])
+    
+    return df
 
 
