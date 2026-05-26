@@ -93,8 +93,6 @@ Coverage floors prevent one-company leading-edge periods from being misread as s
 - **50% minimum** reporters per metric per quarter for sector trends
 - **80% broad-coverage rule** for the headline revenue base
 
-*Why this matters for hiring: this is the most common sector-analytics mistake, and the most common interview question for senior analyst roles. The repo shows I caught it once and built around it.*
-
 ### 2. Calendar-quarter alignment for mixed cadences
 
 Companies disclose financials on different fiscal calendars and cadences. Sector trends use Q1–Q4 rows only and group by `Calendar_Quarter`, not the company's fiscal `Period_Type`. FY, H1, and 9M reporters are surfaced in per-company views as separate cadence lines; they are not blended into quarterly sector trends.
