@@ -1,38 +1,63 @@
 # Biopharma Command Center
 
-An intelligence layer for the Top 50 biopharma companies, bridging reported financial discipline with ClinicalTrials.gov reality. The app is built on committed CSV datasets with strict attribution rules, hybrid reporting-cadence handling, and an auditable data trail.
+**A live intelligence dashboard that reconciles what the Top 50 biopharma companies *report* spending on R&D with what they're actually *running* in ClinicalTrials.gov — with M&A-aware sponsor attribution and reporting-cadence handling that survives the messiness of real disclosure data.**
 
-> **Live app:** https://pharmabiotechmapping-ewsetptbhsm3npjygtssc5.streamlit.app/
->
-> **Status:** MVP-2 dashboard integration is live. The app includes the MVP-1 financial dashboard, Clinical Productivity vs. R&D Spend bridge chart, company clinical KPI/NCT detail panel, change-feed cold-start scaffold, recent registry updates panel, lifecycle filter, and mobile-friendly **Overview / Full detail** modes. The true change feed remains in cold-start state until the next monthly ClinicalTrials.gov snapshot.
-
----
-
-## Screenshots
-
-### Financial × clinical bridge
+🔗 **[Live demo →](https://pharmabiotechmapping-ewsetptbhsm3npjygtssc5.streamlit.app/)** &nbsp;·&nbsp; 🐍 Python · Streamlit · Pandas · ClinicalTrials.gov API v2 &nbsp;·&nbsp; Status: MVP-2 dashboard live
 
 ![Clinical Productivity vs. R&D Spend](docs/screenshots/01_bridge_chart.png)
 
-**Financial × clinical bridge.** Reported R&D spend is compared with owned active Phase III trial exposure from ClinicalTrials.gov. Bubble size is log-scaled market cap; color shows strategic positioning.
+*The headline chart: annualized reported R&D spend against owned active Phase III trial exposure, bubble-sized by log market cap. A strategic-posture overlay separates companies running lean clinical operations from those paying for late-stage runway.*
+
+---
+
+## TL;DR
+
+Cross-company biopharma comparison is hard to do honestly. Companies disclose on different fiscal calendars (Q1–Q4, H1, 9M, FY). Subsidiary names break sponsor search on ClinicalTrials.gov, so Genentech trials look unrelated to Roche. Naive mean-of-ratios lets a $50M biotech outweigh Pfizer in sector aggregates. This dashboard solves those problems with **dollar-weighted aggregation**, **calendar-quarter alignment**, an **M&A-aware sponsor alias map**, and a **snapshot-diff change feed**. Every visible number has a defensible answer to *"where did this come from?"*
+
+## Why I built this
+
+I wanted to demonstrate end-to-end data craft on a domain I find genuinely interesting, under constraints that mirror real industry data engineering: heterogeneous sources, evolving entities (M&A), cadence mismatches, and the constant tension between *fast answer* and *honest answer*. The project deliberately picks the hard-mode default at each fork — dollar-weighted ratios over means-of-ratios, snapshot-based diffs over update-date heuristics, explicit expected-zero documentation over silent blanks — rather than the shortcut that would still render a chart.
+
+## Skills demonstrated
+
+| Area | What's in the repo |
+|---|---|
+| **Data engineering** | ClinicalTrials.gov API v2 extraction · sponsor alias resolution · snapshot-based change-feed architecture · auditable ETL |
+| **Data modeling** | Calendar-quarter normalization across mixed cadences (Q/H/9M/FY) · M&A-aware entity resolution · ownership/participation filter contracts |
+| **Statistics & methodology** | Dollar-weighted aggregation · coverage floors (50% trend, 80% headline) · mean-of-ratios pitfall avoidance · snapshot-diff event classification |
+| **Product** | Live Streamlit deployment · mobile-first overview / desktop full-detail modes · KPI cards · NCT-level drill-through · stakeholder-facing limitation disclosures |
+| **Domain** | Top 50 biopharma universe across NYSE/NASDAQ/TSE/HKEX/EU exchanges · ClinicalTrials.gov registry semantics · M&A history (Roche/Genentech, BMS/Celgene, Pfizer/Seagen, AbbVie/Allergan, GSK/ViiV, Takeda/Shire, Sanofi/Genzyme) |
+| **Tech stack** | Python · Pandas · Streamlit · ClinicalTrials.gov API v2 · committed CSV data layer · Git/GitHub deployment |
+
+## How to evaluate this in 5 minutes
+
+If you're hiring and short on time, three things to look at:
+
+1. **The bridge chart** (screenshot above, live in the dashboard) — does the financial × clinical comparison hold up against companies you know well?
+2. **[Methodology in three points](#methodology-in-three-points)** — the three rules that drive every number on the dashboard, especially *"Dollar-weighted aggregation, not means-of-ratios"* and *"Honest gaps over confident guesses."*
+3. **[`Sponsor_Alias_Map.csv`](data/clinical_trials/Sponsor_Alias_Map.csv)** and **[`ClinicalTrials_Alias_Reconciliation.csv`](data/clinical_trials/ClinicalTrials_Alias_Reconciliation.csv)** — the M&A-aware sponsor attribution layer with per-alias API yield tracking. This is where data engineering meets domain knowledge.
+
+---
+
+## More screenshots
 
 ### Mobile-first overview mode
 
 ![Mobile overview mode](docs/screenshots/02_mobile_overview.png)
 
-**Mobile-first overview mode.** Overview mode prioritizes summary cards and ranked context for quick review, while Full detail mode keeps the complete analytical charts for desktop exploration.
+Overview mode prioritizes summary cards and ranked context for quick review on narrow screens. Full detail mode (desktop) keeps the complete analytical charts.
 
-### Company clinical trial footprint
+### Company clinical drill-through
 
 ![Clinical Trial Footprint](docs/screenshots/03_clinical_footprint_nct_table.png)
 
-**Company clinical drill-through.** KPI cards summarize owned and participated ClinicalTrials.gov exposure, while the NCT table links back to the underlying registry records.
+KPI cards summarize owned and participated ClinicalTrials.gov exposure. The NCT table links back to the underlying registry records.
 
-### Change feed cold-start and recent registry updates
+### Change feed and recent registry updates
 
 ![Clinical Change Feed and Recent Registry Updates](docs/screenshots/04_change_feed_recent_updates.png)
 
-**Change-feed scaffold.** True status/phase/attribution change detection waits for the next monthly snapshot; recent registry updates provide near-term visibility without mislabeling administrative edits as clinical events.
+True status/phase/attribution change detection waits for the next monthly snapshot. Recent registry updates provide near-term visibility without mislabeling administrative edits as clinical events.
 
 ---
 
@@ -57,16 +82,18 @@ An intelligence layer for the Top 50 biopharma companies, bridging reported fina
 
 ## Methodology in three points
 
-This dashboard exists because cross-company biopharma comparison is hard to do honestly. Three rules drive the charts, tables, and KPIs.
+Three rules drive the charts, tables, and KPIs. Each is a deliberate choice over a more convenient alternative.
 
 ### 1. Dollar-weighted aggregation, not means-of-ratios
 
-Sector-level ratios are computed as `Σ numerator ÷ Σ denominator` across paired rows where both parts are disclosed, not as the average of per-company ratios. A simple mean over R&D Intensity values would weight a $50M biotech equally with Pfizer; dollar-weighting reflects the sector's actual capital/revenue composition.
+Sector-level ratios are computed as `Σ numerator ÷ Σ denominator` across paired rows where both parts are disclosed — never as the arithmetic mean of per-company ratios. A simple mean over R&D Intensity values would weight a $50M biotech equally with Pfizer; dollar-weighting reflects the sector's actual capital and revenue composition.
 
-Coverage floors prevent one-company leading-edge periods from being mistaken for sector trends:
+Coverage floors prevent one-company leading-edge periods from being misread as sector trends:
 
-- 50% minimum reporters per metric per quarter for sector trends
-- 80% broad-coverage rule for the headline revenue base
+- **50% minimum** reporters per metric per quarter for sector trends
+- **80% broad-coverage rule** for the headline revenue base
+
+*Why this matters for hiring: this is the most common sector-analytics mistake, and the most common interview question for senior analyst roles. The repo shows I caught it once and built around it.*
 
 ### 2. Calendar-quarter alignment for mixed cadences
 
@@ -78,7 +105,7 @@ Where a disclosed fiscal quarter differs from the normalized calendar quarter, b
 
 Where a company does not disclose a metric, the dashboard shows a blank rather than a proxy. Where a trial is registered under a subsidiary name not yet in the alias map, the gap is documented rather than silently papered over.
 
-The principle: every visible number should have a defensible answer if someone asks, "Where did this come from?"
+The operating principle: *every visible number should have a defensible answer if someone asks, "where did this come from?"*
 
 ---
 
@@ -120,7 +147,7 @@ The deployed app reads committed CSVs only. It does **not** call ClinicalTrials.
 
 ClinicalTrials.gov sponsor search treats entities like `Pfizer` and `Seagen` as separate sponsors. The dashboard uses an M&A-aware alias layer so acquired or subsidiary-sponsored trials can be attributed to the current parent when the ownership rule supports it.
 
-Examples covered by the alias map include Roche/Genentech, Pfizer/Seagen, AbbVie/Allergan, BMS/Celgene, Takeda/Shire, GSK/ViiV, Sanofi/Genzyme, and regional Japanese pharma subsidiaries.
+Examples in the alias map: Roche/Genentech, Pfizer/Seagen, AbbVie/Allergan, BMS/Celgene, Takeda/Shire, GSK/ViiV, Sanofi/Genzyme, and regional Japanese pharma subsidiaries.
 
 ### Spot-check reconciliation
 
@@ -128,7 +155,7 @@ Nine major companies were reconciled against ClinicalTrials.gov sponsor exports:
 
 ### Snapshot-based change detection
 
-The change feed is designed as a snapshot diff, not a guessed feed from update dates. It compares the current normalized inventory against the prior monthly snapshot and emits events such as:
+The change feed is designed as a snapshot diff, not a guessed feed from update dates. It compares the current normalized inventory against the prior monthly snapshot and emits typed events:
 
 - New trial
 - Removed from match
@@ -141,11 +168,13 @@ The first run is intentionally a cold start. The dashboard says so rather than i
 
 ### Lifecycle classification with edge-case rules
 
-Lifecycle flags mean meaningful participation in the human therapeutic product lifecycle. For infrastructure companies, flags may reflect enabling role rather than asset ownership. For animal-health companies, human therapeutic stages are set to `FALSE` in the current MVP scope. Partnered/co-commercialized products and branded generics/biosimilars are handled through documented edge-case rules in the lifecycle audit trail.
+Lifecycle flags mean meaningful participation in the human therapeutic product lifecycle. For infrastructure companies, flags reflect enabling role rather than asset ownership. For animal-health companies, human therapeutic stages are set to `FALSE` in the current MVP scope. Partnered/co-commercialized products and branded generics/biosimilars are handled through documented edge-case rules in the lifecycle audit trail.
 
 ---
 
 ## Known limitations
+
+The dashboard surfaces these in-app so a reader is never misled about what a number represents.
 
 - **Not an investment recommendation.** No fair-value estimates, price targets, or valuation upside calculations are produced.
 - **ClinicalTrials.gov scope only.** Trials registered exclusively on jRCT, CTIS/EUCTR, ChiCTR, or other regional registries may be absent.
@@ -208,46 +237,52 @@ The app expects all CSVs to be committed under `data/` and `data/clinical_trials
 
 ---
 
-## Deployment verification checklist
+## Build phases
 
-Before treating the deployment as final:
+<details>
+<summary><strong>MVP-1 — Financial intelligence layer</strong></summary>
 
-- [ ] Streamlit app loads from the live URL.
-- [ ] Sidebar `Overview mode` works on mobile-width layout.
-- [ ] `Full detail mode` shows full bubble charts on desktop.
-- [ ] `ClinicalTrials_Inventory_Normalized.csv` is committed under `data/clinical_trials/`.
-- [ ] Clinical Trial Footprint table shows clickable NCT links.
-- [ ] Change Feed shows cold-start placeholder when no true diff events exist.
-- [ ] Recent Registry Updates panel displays selected-company registry updates.
-- [ ] No external API calls are required at app runtime.
+| Phase | Status | Output | Purpose |
+|---|---|---|---|
+| P1 — Company universe setup | Complete | `Company_Master.csv` | Top 50 universe, identifiers, exchanges, lifecycle flags, source metadata, dashboard filter fields |
+| P2 — Financial data extraction | Complete | `Quarterly_Financials.csv` | Reported revenue, R&D, SG&A, cash, and market cap across 2024–2026 reported periods |
+| P3 — Cadence and calendar-quarter handling | Complete | Period/cadence logic in CSV + loaders | Keeps Q1–Q4, H1, 9M, and FY reporters comparable without creating synthetic quarters |
+| P4 — Financial validation and audit | Complete | Validation checks + `Dashboard_Data_Notes.csv` | Captures data caveats, sparse periods, duplicate checks, missing values, latest-period selection logic |
+| P5 — Dashboard integration | Complete | Streamlit financial dashboard | Sector Overview, Sector Trend, Intelligence Map, Strategic Posture, Lifecycle Footprint, Financial Snapshot, Financial Trend, Data Sources |
+
+</details>
+
+<details>
+<summary><strong>MVP-2 — Clinical-trial intelligence layer</strong></summary>
+
+| Phase | Status | Output | Purpose |
+|---|---|---|---|
+| P1 — ClinicalTrials.gov fetch | Complete | `ClinicalTrials_Inventory.csv` | One row per company-NCT match with sponsor alias and M&A-aware attribution |
+| P2 — Trial normalization | Complete | `ClinicalTrials_Inventory_Normalized.csv` | Status buckets, phase buckets, phase weights, owned/participated filter flags |
+| P3 — Company clinical summary | Complete | `ClinicalTrials_Status_Summary.csv` | Aggregates row-level trial data into one-row-per-company KPI inputs |
+| P4 — Snapshot change feed | Cold-start | `ClinicalTrials_Change_Feed.csv` | Detects new/status/phase/attribution changes once at least two snapshots exist |
+| P5a — Bridge chart | Complete | Clinical Productivity vs. R&D Spend | Connects annualized R&D spend to owned active Phase III / phase-weighted clinical exposure |
+| P5b — Clinical detail panel | Complete | Clinical Trial Footprint | Company KPI cards, owned/participated scope, NCT-level table, registry links |
+| P5c — Lifecycle audit | Complete / reviewable | `lifecycle_column_fix_audit.md` | Documents lifecycle edge-case rules; validates lifecycle filter behavior |
+| P5d — Change-feed scaffold | Complete | Clinical Change Feed + Recent Registry Updates | Shows cold-start state honestly while surfacing recent registry update context |
+| P5e — README polish | Complete | Portfolio-facing documentation | Screenshots, project narrative, deployment checks, roadmap |
+
+</details>
 
 ---
 
-## Build phases
+## Deployment verification
 
-### MVP-1 — Financial intelligence layer
+Before treating a deployment as final:
 
-| Phase | Status | Output | Purpose |
-|---|---|---|---|
-| MVP-1 P1 — Company universe setup | Complete | `Company_Master.csv` | Defines the Top 50 company universe, identifiers, exchanges, lifecycle flags, source metadata, and dashboard filter fields. |
-| MVP-1 P2 — Financial data extraction | Complete | `Quarterly_Financials.csv` | Structures reported revenue, R&D, SG&A, cash, and market cap across 2024–2026 reported periods. |
-| MVP-1 P3 — Cadence and calendar-quarter handling | Complete | Period/cadence logic in CSV + loaders | Keeps Q1–Q4, H1, 9M, and FY reporters comparable without creating synthetic quarters. |
-| MVP-1 P4 — Financial validation and audit | Complete | validation checks + `Dashboard_Data_Notes.csv` | Captures data caveats, sparse periods, duplicate checks, missing values, and latest-period selection logic. |
-| MVP-1 P5 — Dashboard integration | Complete | Streamlit financial dashboard | Renders Sector Overview, Sector Trend, Intelligence Map, Strategic Posture, Lifecycle Footprint, Financial Snapshot, Financial Trend, and Data Sources sections. |
-
-### MVP-2 — Clinical-trial intelligence layer
-
-| Phase | Status | Output | Purpose |
-|---|---|---|---|
-| MVP-2 P1 — ClinicalTrials.gov fetch | Complete | `ClinicalTrials_Inventory.csv` | Builds one row per company-NCT match with sponsor alias and M&A-aware attribution. |
-| MVP-2 P2 — Trial normalization | Complete | `ClinicalTrials_Inventory_Normalized.csv` | Adds status buckets, phase buckets, phase weights, and owned/participated filter flags. |
-| MVP-2 P3 — Company clinical summary | Complete | `ClinicalTrials_Status_Summary.csv` | Aggregates row-level trial data into one-row-per-company KPI inputs. |
-| MVP-2 P4 — Snapshot change feed | Cold-start | `ClinicalTrials_Change_Feed.csv` | Detects new/status/phase/attribution changes once at least two snapshots exist. |
-| MVP-2 P5a — Bridge chart | Complete | Clinical Productivity vs. R&D Spend | Connects annualized R&D spend to owned active Phase III / phase-weighted clinical exposure. |
-| MVP-2 P5b — Clinical detail panel | Complete | Clinical Trial Footprint | Adds company KPI cards, owned/participated scope, NCT-level table, and registry links. |
-| MVP-2 P5c — Lifecycle audit | Complete / reviewable | `lifecycle_column_fix_audit.md` | Documents lifecycle edge-case rules and validates lifecycle filter behavior. |
-| MVP-2 P5d — Change-feed scaffold | Complete | Clinical Change Feed + Recent Registry Updates | Shows cold-start state honestly while surfacing recent registry update context. |
-| MVP-2 P5e — README polish | Complete | Portfolio-facing documentation | Updates screenshots, project narrative, deployment checks, and roadmap. |
+- [ ] Streamlit app loads from the live URL
+- [ ] Sidebar `Overview mode` works on mobile-width layout
+- [ ] `Full detail mode` shows full bubble charts on desktop
+- [ ] `ClinicalTrials_Inventory_Normalized.csv` is committed under `data/clinical_trials/`
+- [ ] Clinical Trial Footprint table shows clickable NCT links
+- [ ] Change Feed shows cold-start placeholder when no true diff events exist
+- [ ] Recent Registry Updates panel displays selected-company registry updates
+- [ ] No external API calls required at app runtime
 
 ---
 
@@ -256,29 +291,10 @@ Before treating the deployment as final:
 | Phase | Status | Notes |
 |---|---|---|
 | MVP-1 financial dashboard | Complete | Sector overview, trends, intelligence map, strategic posture, company financial detail |
-| MVP-2 P1 clinical fetch | Complete | ClinicalTrials.gov API v2 inventory with sponsor alias attribution |
-| MVP-2 P2 normalization | Complete | Status, phase, weight, and ownership/participation helper columns |
-| MVP-2 P3 company summary | Complete | One-row-per-company clinical KPI table |
-| MVP-2 P4 change feed | Cold-start | Activates after the next monthly snapshot |
-| MVP-2 P5a bridge chart | Complete | Clinical Productivity vs. R&D Spend |
-| MVP-2 P5b clinical detail | Complete | KPI cards and NCT-level table |
-| MVP-2 P5c lifecycle audit | Complete / reviewable | Edge-case rules documented; can be refined as scope changes |
-| MVP-2 P5d change-feed scaffold | Complete | Cold-start state + recent registry updates |
-| MVP-2 P5e README polish | Complete | Portfolio-facing documentation |
+| MVP-2 clinical intelligence | Complete | API v2 inventory, normalization, summary, bridge chart, clinical detail, lifecycle audit, change-feed scaffold |
 | MVP-3 network map | Future | Asset, indication, and partnership graph |
 | MVP-3 multi-registry expansion | Future | WHO ICTRP / CTIS / jRCT / ChiCTR integration |
 
 ---
 
-## Why this project matters
-
-The project is intentionally small in surface area but dense in methodology. It demonstrates:
-
-- financial data validation and reporting-cadence handling,
-- data modeling across company, financial, and clinical layers,
-- ClinicalTrials.gov API v2 extraction and normalization,
-- M&A-aware entity resolution,
-- auditable ETL design,
-- Streamlit product design for both mobile overview and desktop detail,
-- stakeholder-ready communication of methodology, uncertainty, and data limitations.
-
+*Built as a portfolio piece to demonstrate end-to-end data craft against real-world disclosure data — heterogeneous sources, evolving entities, cadence mismatches, and the constant choice between fast and honest.*
