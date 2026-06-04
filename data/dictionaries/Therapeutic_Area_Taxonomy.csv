@@ -1,0 +1,16 @@
+Therapeutic_Area,Profile_Column,Description,Example_Indications,Include_Keywords,Exclude_Keywords,Display_Order,Is_Active,Reviewer_Notes
+Oncology,Oncology,Includes oncology therapies and cancer treatments,"Breast Cancer, NSCLC, Gastric Cancer, Multiple Myeloma, AML",,,1,True,"Malignant hematology (AML, CLL, lymphoma, multiple myeloma, MDS) → ONC"
+Cardiometabolic,Cardiometabolic,Cardiovascular and metabolic diseases,"T2D, Obesity, Heart Failure, Hypertension, NASH/MASH",,,2,True,
+Immunology & Inflammation,Immunology_Inflammation,Immunology and inflammatory disorders,"Psoriasis, RA, Crohn's, IBD, Atopic Dermatitis",,,3,True,
+Neuroscience / CNS,Neuroscience,Neuroscience and central nervous system disorders,"Alzheimer's, MS, Parkinson's, Schizophrenia, Depression",,,4,True,
+Infectious Disease & Vaccines,Infectious_Disease_Vaccines,Infectious diseases and vaccine candidates,"HIV, HCV, COVID-19, RSV, Influenza",,,5,True,
+Rare Disease,Rare_Disease,Rare diseases and genetic disorders,"Hemophilia, Sickle Cell, Beta Thalassemia, SMA, CF",,,6,True,"Non-malignant hematology (hemophilia, sickle cell, beta thalassemia) → RARE"
+Respiratory,Respiratory,Respiratory and pulmonary diseases,"Asthma, COPD",,,7,True,
+Renal,Renal,Renal and kidney diseases,"CKD, IgA Nephropathy, ADPKD",,,8,True,
+Ophthalmology,Ophthalmology,Ocular and eye diseases,"wet AMD, Diabetic Retinopathy, Geographic Atrophy",,,9,True,
+Dermatology,Dermatology,Non-autoimmune skin indications only,"Acne Vulgaris, Tinea Pedis, Actinic Keratosis",,,10,True,"Non-autoimmune skin indications only — autoimmune dermatology (Psoriasis, Atopic Dermatitis) belongs in IMMUNO"
+Women's Health,Women_Health,Health issues specific to female anatomy,"Endometriosis, Postpartum Depression, Menopause",,,11,True,
+Animal Health,Animal_Health,Veterinary medicine and animal indications,Veterinary indications only,,,12,True,
+Tools / Diagnostics,Diagnostics_Tools,"Life sciences tools, CRO services, and diagnostic platforms","Bioprocessing, Diagnostics, CRO services",,,13,True,
+Diversified,Diversified,Multi-franchise companies where no single area represents > 40% of pipeline or revenue,Multiple indications across therapeutic areas,,,14,True,
+Other / Non-Therapeutic,Other,"Other non-therapeutic business models like retail pharmacy, royalty financing, and insurance","Royalty financing, retail pharmacy, insurance",,,15,True,
