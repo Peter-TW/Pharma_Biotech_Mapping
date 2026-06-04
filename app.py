@@ -9,7 +9,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from data import load_master, load_financials, get_latest_financials, get_lifecycle, get_positioning, get_sector_ratio_trend, load_clinical_status_summary, load_expected_zero, build_bridge_chart_data, load_clinical_inventory_normalized, get_company_clinical_inventory, load_clinical_change_feed
+from data import load_master, load_financials, get_latest_financials, get_lifecycle, get_positioning, get_sector_ratio_trend, load_clinical_status_summary, load_expected_zero, build_bridge_chart_data, load_clinical_inventory_normalized, get_company_clinical_inventory, load_clinical_change_feed, load_profiles
 from charts import render_lifecycle_strip, render_financial_trend, render_intelligence_map, render_strategic_posture_quadrant, render_bridge_chart
 
 st.set_page_config(
@@ -58,6 +58,7 @@ positioning_df = get_positioning(master, latest)
 
 from data import load_data_notes
 data_notes = load_data_notes()
+profiles = load_profiles()
 
 FULL_CYCLE_LABEL = "Full-cycle (all 5 stages)"
 QUARTERS = ["Q1", "Q2", "Q3", "Q4"]
@@ -751,21 +752,33 @@ with st.container(border=True):
     if lifecycle_choice == "All companies" and (len(df_bridge) < 35 or len(df_bridge) > 50):
         st.warning(f"Warning: Unexpected number of companies in bridge chart data: {len(df_bridge)} (expected 40-46). Some data might be missing.")
 
-    # 4b Expected-zero verification
-    expected_zero_check_uids = ["CMP-022", "CMP-043", "CMP-047", "CMP-049"]
-    for ez_uid in expected_zero_check_uids:
-        if ez_uid in df_bridge["Unique_ID"].values:
-            st.warning(f"Warning: Expected-zero company {ez_uid} was not correctly filtered out of the bridge chart.")
+    # 4b Expected-zero verification — source from Expected_Zero_Companies.csv,
+    # not a hardcoded UID list, so the app stays aligned with the data layer.
+    ez_df = load_expected_zero()
+    pool_uids = set(pool["Unique_ID"].dropna().astype(str))
+    bridge_uids = set(df_bridge["Unique_ID"].dropna().astype(str))
+
+    ez_pool_df = ez_df[ez_df["Unique_ID"].dropna().astype(str).isin(pool_uids)].copy()
+    expected_zero_check_uids = set(ez_pool_df["Unique_ID"].dropna().astype(str))
+    bad_expected_zero_uids = sorted(expected_zero_check_uids & bridge_uids)
+
+    for ez_uid in bad_expected_zero_uids:
+        ez_name = ez_pool_df.loc[
+            ez_pool_df["Unique_ID"].astype(str) == ez_uid,
+            "Company_Name",
+        ]
+        ez_display = ez_name.iloc[0] if not ez_name.empty else ez_uid
+        st.warning(
+            f"Warning: Expected-zero company {ez_display} ({ez_uid}) was not correctly "
+            "filtered out of the bridge chart."
+        )
 
     # Build footnote texts for methodology/exclusion
-    ez_df = load_expected_zero()
-    pool_uids = set(pool["Unique_ID"].tolist())
-    ez_pool_df = ez_df[ez_df["Unique_ID"].isin(pool_uids)]
     ez_count = len(ez_pool_df)
-    expected_zero_names = ", ".join(ez_pool_df["Company_Name"].tolist())
+    expected_zero_names = ", ".join(ez_pool_df["Company_Name"].dropna().astype(str).tolist())
     
-    ez_uids = set(ez_df["Unique_ID"].tolist())
-    included_uids = set(df_bridge["Unique_ID"].tolist())
+    ez_uids = set(ez_df["Unique_ID"].dropna().astype(str))
+    included_uids = bridge_uids
     missing_rd_uids = pool_uids - ez_uids - included_uids
 
     missing_rd_names_list = sorted([
@@ -847,7 +860,7 @@ with st.container(border=True):
             st.dataframe(top5_df, use_container_width=True, hide_index=True)
         
         with st.expander("Show full Clinical Productivity chart"):
-            render_bridge_chart(df_bridge, y_choice_key, selected_unique_id=uid)
+            render_bridge_chart(df_bridge.copy(), y_choice_key, selected_unique_id=uid)
             
         st.caption("Counts reflect registry exposure, not probability of success, asset quality, or valuation upside.")
         with st.expander("Methodology and exclusion notes"):
@@ -859,7 +872,7 @@ with st.container(border=True):
             )
             st.write("ClinicalTrials.gov does not cover every non-US registry-only trial, so region-only programs may be absent.")
     else:
-        render_bridge_chart(df_bridge, y_choice_key, selected_unique_id=uid)
+        render_bridge_chart(df_bridge.copy(), y_choice_key, selected_unique_id=uid)
         st.caption(footnote_text)
         st.caption(
             "Bubble size is log-scaled market cap. X-axis uses latest reported R&D annualized from the company’s latest financial period. "
@@ -888,6 +901,11 @@ with st.container(border=True):
         f"**Market Segment:** {field(company_row.get('Market Segment'))} "
         f"&nbsp;·&nbsp; **Latest Period:** {period_label}"
     )
+    profile_row = profiles[profiles["Unique_ID"] == uid]
+    if not profile_row.empty:
+        overview_text = profile_row.iloc[0].get("Company_Overview", "")
+        if pd.notna(overview_text) and str(overview_text).strip():
+            st.markdown(f"*{overview_text.strip()}*")
     sel_pos = positioning_df.loc[positioning_df["Unique_ID"] == uid, "positioning"].iloc[0]
     
     # Calculate freshness badge
@@ -954,7 +972,7 @@ with st.container(border=True):
 
         c5, c6, c7 = st.columns(3)
         c5.metric("Market Cap", fmt_money(lr["Market_Cap_USD_M"]))
-        c6.metric("R&D Intensity", fmt_multiple(lr["rd_intensity"]),
+        c6.metric("R&D Intensity", fmt_pct(lr["rd_intensity"]),
                   help="R&D \u00f7 Revenue")
         c7.metric("Cash / Market Cap", fmt_pct(lr["cash_to_mktcap"]),
                   help="Cash \u00f7 Market Cap")

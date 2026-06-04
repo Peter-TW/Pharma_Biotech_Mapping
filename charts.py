@@ -558,6 +558,10 @@ def render_strategic_posture_quadrant(plot_df, selected_uid, compact=False):
 
 def render_bridge_chart(df_bridge, y_axis_choice, selected_unique_id=None):
     """Render a bubble scatter chart linking R&D spend and clinical pipeline exposure."""
+    # Work on a local copy so presentation-only columns (for example bubble_size)
+    # never mutate the caller's frame or a cached Streamlit object.
+    df_bridge = df_bridge.copy()
+
     # Ensure there is enough data
     if len(df_bridge) < 3:
         st.info("Not enough data to plot the bridge chart.")

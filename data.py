@@ -30,6 +30,13 @@ def load_master() -> pd.DataFrame:
 
 
 @st.cache_data
+def load_profiles() -> pd.DataFrame:
+    """Load Company_Profile.csv."""
+    return pd.read_csv(DATA_DIR / "Company_Profile.csv", encoding="utf-8-sig")
+
+
+
+@st.cache_data
 def load_financials() -> pd.DataFrame:
     """Load Quarterly_Financials.csv with date parsing and numeric coercion."""
     df = pd.read_csv(DATA_DIR / "Quarterly_Financials.csv", encoding="utf-8-sig")
@@ -517,6 +524,58 @@ def load_clinical_change_feed() -> pd.DataFrame:
             df[col] = None
             
     return df[expected_cols]
+
+
+def _coerce_active_flag(series: pd.Series) -> pd.Series:
+    """Return a robust boolean active flag from TRUE/Y/YES/1-style values."""
+    return series.astype(str).str.strip().str.upper().isin(["TRUE", "Y", "YES", "1"])
+
+
+@st.cache_data
+def load_therapeutic_area_taxonomy() -> pd.DataFrame:
+    """Load Therapeutic_Area_Taxonomy.csv with robust type coercion."""
+    path = DATA_DIR / "dictionaries" / "Therapeutic_Area_Taxonomy.csv"
+    df = pd.read_csv(path, encoding="utf-8-sig")
+
+    if "Is_Active" in df.columns:
+        df["Is_Active"] = _coerce_active_flag(df["Is_Active"])
+    else:
+        df["Is_Active"] = True
+
+    if "Display_Order" in df.columns:
+        df["Display_Order"] = pd.to_numeric(df["Display_Order"], errors="coerce")
+    else:
+        df["Display_Order"] = range(1, len(df) + 1)
+
+    for col in ["Therapeutic_Area", "Profile_Column"]:
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.strip()
+
+    return df
+
+
+@st.cache_data
+def load_modality_taxonomy() -> pd.DataFrame:
+    """Load Modality_Taxonomy.csv with robust type coercion."""
+    path = DATA_DIR / "dictionaries" / "Modality_Taxonomy.csv"
+    df = pd.read_csv(path, encoding="utf-8-sig")
+
+    if "Is_Active" in df.columns:
+        df["Is_Active"] = _coerce_active_flag(df["Is_Active"])
+    else:
+        df["Is_Active"] = True
+
+    if "Display_Order" in df.columns:
+        df["Display_Order"] = pd.to_numeric(df["Display_Order"], errors="coerce")
+    else:
+        df["Display_Order"] = range(1, len(df) + 1)
+
+    for col in ["Modality_Name", "Profile_Column"]:
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.strip()
+
+    return df
+
 
 
 
