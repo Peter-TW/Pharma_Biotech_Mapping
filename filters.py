@@ -73,6 +73,10 @@ def _company_label_map(master: pd.DataFrame) -> dict[str, str]:
     return labels
 
 
+def _first_or_none(values: list[str]) -> str | None:
+    return values[0] if values else None
+
+
 # ── Select-all callbacks ─────────────────────────────────────────────
 
 def _sync_select_all_to_multiselect(all_key: str, list_key: str, options: list[str]) -> None:
@@ -94,27 +98,33 @@ def init_filter_state(master: pd.DataFrame) -> None:
     if "filter_lifecycle" not in st.session_state:
         st.session_state.filter_lifecycle = "All companies"
 
-    if "filter_tas" not in st.session_state:
-        try:
-            ta_df = _active_taxonomy_rows(load_therapeutic_area_taxonomy())
-            active_tas = ta_df["Therapeutic_Area"].dropna().astype(str).tolist()
-        except Exception:
-            active_tas = []
-        st.session_state.filter_tas = active_tas
+    try:
+        ta_df = _active_taxonomy_rows(load_therapeutic_area_taxonomy())
+        active_tas = ta_df["Therapeutic_Area"].dropna().astype(str).tolist()
+    except Exception:
+        active_tas = []
 
     if "filter_all_tas" not in st.session_state:
         st.session_state.filter_all_tas = True
+    if "filter_ta_single" not in st.session_state:
+        st.session_state.filter_ta_single = _first_or_none(active_tas)
+    # Backwards-compatible key from the older multiselect version.
+    if "filter_tas" not in st.session_state:
+        st.session_state.filter_tas = active_tas
 
-    if "filter_modalities" not in st.session_state:
-        try:
-            mo_df = _active_taxonomy_rows(load_modality_taxonomy())
-            active_modalities = mo_df["Modality_Name"].dropna().astype(str).tolist()
-        except Exception:
-            active_modalities = []
-        st.session_state.filter_modalities = active_modalities
+    try:
+        mo_df = _active_taxonomy_rows(load_modality_taxonomy())
+        active_modalities = mo_df["Modality_Name"].dropna().astype(str).tolist()
+    except Exception:
+        active_modalities = []
 
     if "filter_all_modalities" not in st.session_state:
         st.session_state.filter_all_modalities = True
+    if "filter_modality_single" not in st.session_state:
+        st.session_state.filter_modality_single = _first_or_none(active_modalities)
+    # Backwards-compatible key from the older multiselect version.
+    if "filter_modalities" not in st.session_state:
+        st.session_state.filter_modalities = active_modalities
 
     if "filter_company_uids" not in st.session_state:
         st.session_state.filter_company_uids = _ordered_company_ids(master)
@@ -144,11 +154,6 @@ def render_sidebar_filters(
     active_ta_df = _active_taxonomy_rows(ta_taxonomy)
     ta_options = active_ta_df["Therapeutic_Area"].dropna().astype(str).tolist()
 
-    current_tas = st.session_state.get("filter_tas", [])
-    st.session_state.filter_tas = [x for x in current_tas if x in ta_options]
-    if st.session_state.get("filter_all_tas", False):
-        st.session_state.filter_tas = list(ta_options)
-
     missing_ta_cols = [
         col for col in active_ta_df.get("Profile_Column", pd.Series(dtype=str)).dropna().astype(str)
         if col not in profile.columns
@@ -158,29 +163,31 @@ def render_sidebar_filters(
             "Missing Therapeutic Area columns in profile: " + ", ".join(missing_ta_cols)
         )
 
-    st.sidebar.checkbox(
-        "Select all therapeutic areas",
-        key="filter_all_tas",
-        on_change=_sync_select_all_to_multiselect,
-        args=("filter_all_tas", "filter_tas", ta_options),
-    )
-    st.sidebar.multiselect(
-        "Therapeutic area exposure",
-        options=ta_options,
-        key="filter_tas",
-        help="Active-in filter: keeps companies with Y in at least one selected therapeutic-area exposure column.",
-        on_change=_sync_multiselect_to_select_all,
-        args=("filter_all_tas", "filter_tas", ta_options),
-    )
+    # Keep selected value valid after taxonomy/display-name edits.
+    if st.session_state.get("filter_ta_single") not in ta_options:
+        st.session_state.filter_ta_single = _first_or_none(ta_options)
+
+    st.sidebar.checkbox("Select all therapeutic areas", key="filter_all_tas")
+
+    if st.session_state.get("filter_all_tas", False):
+        st.sidebar.selectbox(
+            "Therapeutic area exposure",
+            options=["All therapeutic areas"],
+            index=0,
+            disabled=True,
+            help="Select all is enabled, so therapeutic area does not restrict the universe.",
+        )
+    else:
+        st.sidebar.selectbox(
+            "Therapeutic area exposure",
+            options=ta_options,
+            key="filter_ta_single",
+            help="Active-in filter: keeps companies with Y in the selected therapeutic-area exposure column.",
+        )
 
     # ── Modality exposure dropdown ───────────────────────────────────
     active_mo_df = _active_taxonomy_rows(mo_taxonomy)
     mo_options = active_mo_df["Modality_Name"].dropna().astype(str).tolist()
-
-    current_modalities = st.session_state.get("filter_modalities", [])
-    st.session_state.filter_modalities = [x for x in current_modalities if x in mo_options]
-    if st.session_state.get("filter_all_modalities", False):
-        st.session_state.filter_modalities = list(mo_options)
 
     missing_mo_cols = [
         col for col in active_mo_df.get("Profile_Column", pd.Series(dtype=str)).dropna().astype(str)
@@ -189,22 +196,31 @@ def render_sidebar_filters(
     if missing_mo_cols:
         st.sidebar.warning("Missing Modality columns in profile: " + ", ".join(missing_mo_cols))
 
-    st.sidebar.checkbox(
-        "Select all modalities",
-        key="filter_all_modalities",
-        on_change=_sync_select_all_to_multiselect,
-        args=("filter_all_modalities", "filter_modalities", mo_options),
-    )
-    st.sidebar.multiselect(
-        "Modality exposure",
-        options=mo_options,
-        key="filter_modalities",
-        help="Active-in filter: keeps companies with Y in at least one selected modality column.",
-        on_change=_sync_multiselect_to_select_all,
-        args=("filter_all_modalities", "filter_modalities", mo_options),
-    )
+    # Keep selected value valid after taxonomy/display-name edits.
+    if st.session_state.get("filter_modality_single") not in mo_options:
+        st.session_state.filter_modality_single = _first_or_none(mo_options)
+
+    st.sidebar.checkbox("Select all modalities", key="filter_all_modalities")
+
+    if st.session_state.get("filter_all_modalities", False):
+        st.sidebar.selectbox(
+            "Modality exposure",
+            options=["All modalities"],
+            index=0,
+            disabled=True,
+            help="Select all is enabled, so modality does not restrict the universe.",
+        )
+    else:
+        st.sidebar.selectbox(
+            "Modality exposure",
+            options=mo_options,
+            key="filter_modality_single",
+            help="Active-in filter: keeps companies with Y in the selected modality column.",
+        )
 
     # ── Company universe dropdown ────────────────────────────────────
+    # Company filtering remains a multi-select because users may want a custom peer group.
+    # The focused company selector in app.py remains the single selectbox for detail views.
     company_options = _ordered_company_ids(master)
     company_labels = _company_label_map(master)
 
@@ -261,47 +277,49 @@ def resolve_filtered_universe(
         how="left",
     )
 
-    # Therapeutic area: all selected = no restriction; empty = no universe.
+    # Therapeutic area: select all = no restriction; otherwise filter to one selected exposure.
     ta_tax = _active_taxonomy_rows(load_therapeutic_area_taxonomy())
     all_tas = ta_tax["Therapeutic_Area"].dropna().astype(str).tolist()
-    selected_tas = [x for x in st.session_state.get("filter_tas", []) if x in all_tas]
-    if not selected_tas:
-        pool_ids = set()
-    elif set(selected_tas) != set(all_tas):
-        selected_cols = (
-            ta_tax[ta_tax["Therapeutic_Area"].isin(selected_tas)]["Profile_Column"]
-            .dropna()
-            .astype(str)
-            .tolist()
-        )
-        valid_cols = [c for c in selected_cols if c in profile_merged.columns]
-        if valid_cols:
-            ta_mask = _normalise_yn_flags(profile_merged, valid_cols).eq("Y")
-            passed_ta = profile_merged.loc[ta_mask.any(axis=1), "Unique_ID"].astype(str)
-            pool_ids = pool_ids.intersection(set(passed_ta))
-        else:
+    if not st.session_state.get("filter_all_tas", True):
+        selected_ta = st.session_state.get("filter_ta_single")
+        if selected_ta not in all_tas:
             pool_ids = set()
+        else:
+            selected_cols = (
+                ta_tax[ta_tax["Therapeutic_Area"] == selected_ta]["Profile_Column"]
+                .dropna()
+                .astype(str)
+                .tolist()
+            )
+            valid_cols = [c for c in selected_cols if c in profile_merged.columns]
+            if valid_cols:
+                ta_mask = _normalise_yn_flags(profile_merged, valid_cols).eq("Y")
+                passed_ta = profile_merged.loc[ta_mask.any(axis=1), "Unique_ID"].astype(str)
+                pool_ids = pool_ids.intersection(set(passed_ta))
+            else:
+                pool_ids = set()
 
-    # Modality: all selected = no restriction; empty = no universe.
+    # Modality: select all = no restriction; otherwise filter to one selected exposure.
     mo_tax = _active_taxonomy_rows(load_modality_taxonomy())
     all_modalities = mo_tax["Modality_Name"].dropna().astype(str).tolist()
-    selected_modalities = [x for x in st.session_state.get("filter_modalities", []) if x in all_modalities]
-    if not selected_modalities:
-        pool_ids = set()
-    elif set(selected_modalities) != set(all_modalities):
-        selected_cols = (
-            mo_tax[mo_tax["Modality_Name"].isin(selected_modalities)]["Profile_Column"]
-            .dropna()
-            .astype(str)
-            .tolist()
-        )
-        valid_cols = [c for c in selected_cols if c in profile_merged.columns]
-        if valid_cols:
-            mo_mask = _normalise_yn_flags(profile_merged, valid_cols).eq("Y")
-            passed_mo = profile_merged.loc[mo_mask.any(axis=1), "Unique_ID"].astype(str)
-            pool_ids = pool_ids.intersection(set(passed_mo))
-        else:
+    if not st.session_state.get("filter_all_modalities", True):
+        selected_modality = st.session_state.get("filter_modality_single")
+        if selected_modality not in all_modalities:
             pool_ids = set()
+        else:
+            selected_cols = (
+                mo_tax[mo_tax["Modality_Name"] == selected_modality]["Profile_Column"]
+                .dropna()
+                .astype(str)
+                .tolist()
+            )
+            valid_cols = [c for c in selected_cols if c in profile_merged.columns]
+            if valid_cols:
+                mo_mask = _normalise_yn_flags(profile_merged, valid_cols).eq("Y")
+                passed_mo = profile_merged.loc[mo_mask.any(axis=1), "Unique_ID"].astype(str)
+                pool_ids = pool_ids.intersection(set(passed_mo))
+            else:
+                pool_ids = set()
 
     # Company universe filter: all selected = no restriction; empty = no universe.
     all_companies = _ordered_company_ids(master)
