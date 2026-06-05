@@ -9,8 +9,9 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from data import load_master, load_financials, get_latest_financials, get_lifecycle, get_positioning, get_sector_ratio_trend, load_clinical_status_summary, load_expected_zero, build_bridge_chart_data, load_clinical_inventory_normalized, get_company_clinical_inventory, load_clinical_change_feed, load_profiles
+from data import load_master, load_financials, get_latest_financials, get_lifecycle, get_positioning, get_sector_ratio_trend, load_clinical_status_summary, load_expected_zero, build_bridge_chart_data, load_clinical_inventory_normalized, get_company_clinical_inventory, load_clinical_change_feed, load_profiles, load_therapeutic_area_taxonomy, load_modality_taxonomy
 from charts import render_lifecycle_strip, render_financial_trend, render_intelligence_map, render_strategic_posture_quadrant, render_bridge_chart
+from filters import init_filter_state, render_sidebar_filters, resolve_filtered_universe
 
 st.set_page_config(
     page_title="Biopharma Command Center",
@@ -167,20 +168,32 @@ view_mode = st.sidebar.radio(
 )
 is_overview_mode = view_mode == "Overview mode"
 
-lifecycle_choice = st.sidebar.radio(
-    "Lifecycle filter",
-    ["All companies", "Full-cycle only", "Non-full-cycle only"],
-)
+# Load taxonomies
+ta_taxonomy = load_therapeutic_area_taxonomy()
+mo_taxonomy = load_modality_taxonomy()
 
-full_ids = set(
-    lifecycle_df.loc[lifecycle_df["lifecycle_profile"] == FULL_CYCLE_LABEL, "Unique_ID"]
-)
-if lifecycle_choice == "Full-cycle only":
-    pool = master[master["Unique_ID"].isin(full_ids)]
-elif lifecycle_choice == "Non-full-cycle only":
-    pool = master[~master["Unique_ID"].isin(full_ids)]
-else:
-    pool = master
+# Initialize filter state
+init_filter_state(master)
+
+# Render sidebar filters (lifecycle, TA, modality)
+render_sidebar_filters(master, profiles, ta_taxonomy, mo_taxonomy)
+
+# Resolve filtered universe
+pool_ids = resolve_filtered_universe(master, profiles, latest)
+
+if not pool_ids:
+    st.sidebar.caption(f"0 of {len(master)} companies shown")
+    st.warning("No companies match the selected filters. Please adjust your criteria.")
+    st.stop()
+
+# Subset pool based on pool_ids
+pool = master[master["Unique_ID"].isin(pool_ids)].copy()
+
+if len(pool_ids) < 10:
+    st.caption(
+        "⚠️ Filtered universe contains fewer than 10 companies. "
+        "Coverage floors are recalculated on this subset, so sector aggregates may be less stable."
+    )
 
 # Default the selector to the largest company (by latest market cap) in view.
 mcap_by_id = latest.set_index("Unique_ID")["Market_Cap_USD_M"]
@@ -204,15 +217,13 @@ for _, row in pool_clean.iterrows():
     label_to_uid[lbl] = row["Unique_ID"]
     uid_to_name[row["Unique_ID"]] = name
 
-flagship_row = pool_clean.sort_values("_mcap", ascending=False).iloc[0]
-flagship_name = flagship_row["Company Name"]
-flagship_ticker = flagship_row.get("Ticker")
-if pd.isna(flagship_ticker) or str(flagship_ticker).strip() == "" or str(flagship_ticker).lower() == "nan":
-    flagship_label = flagship_name
-else:
-    flagship_label = f"{flagship_name} ({str(flagship_ticker).strip()})"
-
-default_index = labels.index(flagship_label)
+# Determine selector index based on st.session_state.selected_company_uid
+current_selected_uid = st.session_state.selected_company_uid
+default_index = 0
+for idx, lbl in enumerate(labels):
+    if label_to_uid[lbl] == current_selected_uid:
+        default_index = idx
+        break
 
 selected_label = st.sidebar.selectbox(
     "Select company", labels, index=default_index
@@ -220,6 +231,7 @@ selected_label = st.sidebar.selectbox(
 st.sidebar.caption(f"{len(labels)} of {len(master)} companies shown")
 
 uid = label_to_uid[selected_label]
+st.session_state.selected_company_uid = uid
 selected_name = uid_to_name[uid]
 
 company_row = master[master["Unique_ID"] == uid].iloc[0]
@@ -577,8 +589,15 @@ with st.container(border=True):
                     unsafe_allow_html=True
                 )
 
-
-
+    if len(pool_ids) < 10:
+        st.markdown(
+            f'<div style="font-size:12px; color:#F39C12; margin-top:5px; margin-bottom:10px;">'
+            f'⚠️ <b>Trend Instability Warning:</b> With fewer than 10 companies in the active pool, '
+            f'sector-level trend lines are highly sensitive to individual disclosures and may exhibit extreme volatility. '
+            f'Interpret aggregates with caution.'
+            f'</div>',
+            unsafe_allow_html=True
+        )
 # ── Intelligence Map ────────────────────────────────────────────────
 with st.container(border=True):
     st.subheader("Intelligence Map")
@@ -748,8 +767,13 @@ with st.container(border=True):
     status_summary = load_clinical_status_summary()
     df_bridge = build_bridge_chart_data(pool, latest, status_summary)
 
-    # 4a Validation Row count check
-    if lifecycle_choice == "All companies" and (len(df_bridge) < 35 or len(df_bridge) > 50):
+    active_tas_count = len(ta_taxonomy[ta_taxonomy["Is_Active"] == True])
+    is_unfiltered = (
+        st.session_state.filter_lifecycle == "All companies"
+        and len(st.session_state.filter_tas) >= active_tas_count
+        and len(st.session_state.filter_modalities) == 0
+    )
+    if is_unfiltered and (len(df_bridge) < 35 or len(df_bridge) > 50):
         st.warning(f"Warning: Unexpected number of companies in bridge chart data: {len(df_bridge)} (expected 40-46). Some data might be missing.")
 
     # 4b Expected-zero verification — source from Expected_Zero_Companies.csv,
@@ -790,7 +814,10 @@ with st.container(border=True):
 
     footnote_text = f"Showing {len(df_bridge)} eligible companies from the current lifecycle filter."
     if ez_count > 0:
-        footnote_text += f" Excluded: {ez_count} non-pharma business{'es' if ez_count > 1 else ''} ({expected_zero_names} — animal health, royalty financier, and life-sciences tools)."
+        footnote_text += (
+            f" Excluded: {ez_count} expected-zero compan{'ies' if ez_count != 1 else 'y'} "
+            f"for the ClinicalTrials.gov human-trial layer ({expected_zero_names})."
+        )
     if missing_rd_names:
         footnote_text += f" {len(missing_rd_names_list)} additional company/companies excluded due to missing latest-period R&D or market cap disclosure ({missing_rd_names})."
 
@@ -860,7 +887,7 @@ with st.container(border=True):
             st.dataframe(top5_df, use_container_width=True, hide_index=True)
         
         with st.expander("Show full Clinical Productivity chart"):
-            render_bridge_chart(df_bridge.copy(), y_choice_key, selected_unique_id=uid)
+            render_bridge_chart(df_bridge, y_choice_key, selected_unique_id=uid)
             
         st.caption("Counts reflect registry exposure, not probability of success, asset quality, or valuation upside.")
         with st.expander("Methodology and exclusion notes"):
@@ -872,7 +899,7 @@ with st.container(border=True):
             )
             st.write("ClinicalTrials.gov does not cover every non-US registry-only trial, so region-only programs may be absent.")
     else:
-        render_bridge_chart(df_bridge.copy(), y_choice_key, selected_unique_id=uid)
+        render_bridge_chart(df_bridge, y_choice_key, selected_unique_id=uid)
         st.caption(footnote_text)
         st.caption(
             "Bubble size is log-scaled market cap. X-axis uses latest reported R&D annualized from the company’s latest financial period. "
