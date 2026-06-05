@@ -767,11 +767,13 @@ with st.container(border=True):
     status_summary = load_clinical_status_summary()
     df_bridge = build_bridge_chart_data(pool, latest, status_summary)
 
-    active_tas_count = len(ta_taxonomy[ta_taxonomy["Is_Active"] == True])
+    # Unfiltered bridge-chart validation should follow the current dropdown-style
+    # filter state keys. Older multi-select keys (filter_tas / filter_modalities)
+    # are no longer created by filters.py.
     is_unfiltered = (
-        st.session_state.filter_lifecycle == "All companies"
-        and len(st.session_state.filter_tas) >= active_tas_count
-        and len(st.session_state.filter_modalities) == 0
+        st.session_state.get("filter_lifecycle") == "All companies"
+        and st.session_state.get("filter_ta_single", "All therapeutic areas") == "All therapeutic areas"
+        and st.session_state.get("filter_modality_single", "All modalities") == "All modalities"
     )
     if is_unfiltered and (len(df_bridge) < 35 or len(df_bridge) > 50):
         st.warning(f"Warning: Unexpected number of companies in bridge chart data: {len(df_bridge)} (expected 40-46). Some data might be missing.")
