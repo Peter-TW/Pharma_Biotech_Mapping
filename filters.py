@@ -10,6 +10,9 @@ from data import (
 )
 
 
+_BOOL_TRUE = ["TRUE", "Y", "YES", "1"]
+
+
 def _active_taxonomy_rows(df: pd.DataFrame) -> pd.DataFrame:
     """Return active taxonomy rows sorted by Display_Order, robust to string booleans."""
     if df.empty:
@@ -17,8 +20,7 @@ def _active_taxonomy_rows(df: pd.DataFrame) -> pd.DataFrame:
 
     out = df.copy()
     if "Is_Active" in out.columns:
-        active = out["Is_Active"].astype(str).str.strip().str.upper().isin(["TRUE", "Y", "YES", "1"])
-        # If the loader already produced booleans, preserve them too.
+        active = out["Is_Active"].astype(str).str.strip().str.upper().isin(_BOOL_TRUE)
         active = active | (out["Is_Active"] == True)
         out = out[active].copy()
 
@@ -39,6 +41,54 @@ def _normalise_yn_flags(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
     )
 
 
+def _company_label(row: pd.Series) -> str:
+    """Return a readable company label for sidebar controls."""
+    name = str(row.get("Company Name", "")).strip()
+    ticker = row.get("Ticker")
+    ticker_s = "" if pd.isna(ticker) else str(ticker).strip()
+    if ticker_s and ticker_s.lower() != "nan":
+        return f"{name} ({ticker_s})"
+    return name
+
+
+def _ordered_company_ids(master: pd.DataFrame) -> list[str]:
+    """Return company IDs ordered by display name."""
+    if master.empty or "Unique_ID" not in master.columns:
+        return []
+    cols = ["Unique_ID", "Company Name"] + (["Ticker"] if "Ticker" in master.columns else [])
+    ordered = master[cols].copy()
+    ordered["_label"] = ordered.apply(_company_label, axis=1)
+    return ordered.sort_values("_label")["Unique_ID"].dropna().astype(str).tolist()
+
+
+def _company_label_map(master: pd.DataFrame) -> dict[str, str]:
+    """Map Unique_ID to a readable company label."""
+    if master.empty or "Unique_ID" not in master.columns:
+        return {}
+    labels = {}
+    for _, row in master.iterrows():
+        uid = row.get("Unique_ID")
+        if pd.notna(uid):
+            labels[str(uid)] = _company_label(row)
+    return labels
+
+
+# ── Select-all callbacks ─────────────────────────────────────────────
+
+def _sync_select_all_to_multiselect(all_key: str, list_key: str, options: list[str]) -> None:
+    """Checkbox callback: checking selects all, unchecking clears the list."""
+    if st.session_state.get(all_key, False):
+        st.session_state[list_key] = list(options)
+    else:
+        st.session_state[list_key] = []
+
+
+def _sync_multiselect_to_select_all(all_key: str, list_key: str, options: list[str]) -> None:
+    """Multiselect callback: keep the select-all checkbox in sync."""
+    selected = st.session_state.get(list_key, [])
+    st.session_state[all_key] = bool(options) and set(selected) == set(options)
+
+
 def init_filter_state(master: pd.DataFrame) -> None:
     """Initialize st.session_state keys with defaults. No-op if already set."""
     if "filter_lifecycle" not in st.session_state:
@@ -52,14 +102,29 @@ def init_filter_state(master: pd.DataFrame) -> None:
             active_tas = []
         st.session_state.filter_tas = active_tas
 
+    if "filter_all_tas" not in st.session_state:
+        st.session_state.filter_all_tas = True
+
     if "filter_modalities" not in st.session_state:
-        st.session_state.filter_modalities = []
+        try:
+            mo_df = _active_taxonomy_rows(load_modality_taxonomy())
+            active_modalities = mo_df["Modality_Name"].dropna().astype(str).tolist()
+        except Exception:
+            active_modalities = []
+        st.session_state.filter_modalities = active_modalities
+
+    if "filter_all_modalities" not in st.session_state:
+        st.session_state.filter_all_modalities = True
+
+    if "filter_company_uids" not in st.session_state:
+        st.session_state.filter_company_uids = _ordered_company_ids(master)
+
+    if "filter_all_companies" not in st.session_state:
+        st.session_state.filter_all_companies = True
 
     if "selected_company_uid" not in st.session_state:
-        if not master.empty:
-            st.session_state.selected_company_uid = master.iloc[0]["Unique_ID"]
-        else:
-            st.session_state.selected_company_uid = None
+        ids = _ordered_company_ids(master)
+        st.session_state.selected_company_uid = ids[0] if ids else None
 
 
 def render_sidebar_filters(
@@ -75,12 +140,14 @@ def render_sidebar_filters(
         key="filter_lifecycle",
     )
 
+    # ── Therapeutic-area exposure dropdown ───────────────────────────
     active_ta_df = _active_taxonomy_rows(ta_taxonomy)
     ta_options = active_ta_df["Therapeutic_Area"].dropna().astype(str).tolist()
 
-    # Prune stale selections after taxonomy/display-name edits.
     current_tas = st.session_state.get("filter_tas", [])
     st.session_state.filter_tas = [x for x in current_tas if x in ta_options]
+    if st.session_state.get("filter_all_tas", False):
+        st.session_state.filter_tas = list(ta_options)
 
     missing_ta_cols = [
         col for col in active_ta_df.get("Profile_Column", pd.Series(dtype=str)).dropna().astype(str)
@@ -91,34 +158,76 @@ def render_sidebar_filters(
             "Missing Therapeutic Area columns in profile: " + ", ".join(missing_ta_cols)
         )
 
+    st.sidebar.checkbox(
+        "Select all therapeutic areas",
+        key="filter_all_tas",
+        on_change=_sync_select_all_to_multiselect,
+        args=("filter_all_tas", "filter_tas", ta_options),
+    )
     st.sidebar.multiselect(
         "Therapeutic area exposure",
         options=ta_options,
         key="filter_tas",
         help="Active-in filter: keeps companies with Y in at least one selected therapeutic-area exposure column.",
+        on_change=_sync_multiselect_to_select_all,
+        args=("filter_all_tas", "filter_tas", ta_options),
     )
 
-    with st.sidebar.expander("▼ Advanced filters", expanded=False):
-        active_mo_df = _active_taxonomy_rows(mo_taxonomy)
-        mo_options = active_mo_df["Modality_Name"].dropna().astype(str).tolist()
+    # ── Modality exposure dropdown ───────────────────────────────────
+    active_mo_df = _active_taxonomy_rows(mo_taxonomy)
+    mo_options = active_mo_df["Modality_Name"].dropna().astype(str).tolist()
 
-        # Prune stale selections after taxonomy/display-name edits.
-        current_modalities = st.session_state.get("filter_modalities", [])
-        st.session_state.filter_modalities = [x for x in current_modalities if x in mo_options]
+    current_modalities = st.session_state.get("filter_modalities", [])
+    st.session_state.filter_modalities = [x for x in current_modalities if x in mo_options]
+    if st.session_state.get("filter_all_modalities", False):
+        st.session_state.filter_modalities = list(mo_options)
 
-        missing_mo_cols = [
-            col for col in active_mo_df.get("Profile_Column", pd.Series(dtype=str)).dropna().astype(str)
-            if col not in profile.columns
-        ]
-        if missing_mo_cols:
-            st.warning("Missing Modality columns in profile: " + ", ".join(missing_mo_cols))
+    missing_mo_cols = [
+        col for col in active_mo_df.get("Profile_Column", pd.Series(dtype=str)).dropna().astype(str)
+        if col not in profile.columns
+    ]
+    if missing_mo_cols:
+        st.sidebar.warning("Missing Modality columns in profile: " + ", ".join(missing_mo_cols))
 
-        st.multiselect(
-            "Modality exposure",
-            options=mo_options,
-            key="filter_modalities",
-            help="Advanced active-in filter: if selected, keeps companies with Y in at least one selected modality column.",
-        )
+    st.sidebar.checkbox(
+        "Select all modalities",
+        key="filter_all_modalities",
+        on_change=_sync_select_all_to_multiselect,
+        args=("filter_all_modalities", "filter_modalities", mo_options),
+    )
+    st.sidebar.multiselect(
+        "Modality exposure",
+        options=mo_options,
+        key="filter_modalities",
+        help="Active-in filter: keeps companies with Y in at least one selected modality column.",
+        on_change=_sync_multiselect_to_select_all,
+        args=("filter_all_modalities", "filter_modalities", mo_options),
+    )
+
+    # ── Company universe dropdown ────────────────────────────────────
+    company_options = _ordered_company_ids(master)
+    company_labels = _company_label_map(master)
+
+    current_companies = [str(x) for x in st.session_state.get("filter_company_uids", [])]
+    st.session_state.filter_company_uids = [x for x in current_companies if x in company_options]
+    if st.session_state.get("filter_all_companies", False):
+        st.session_state.filter_company_uids = list(company_options)
+
+    st.sidebar.checkbox(
+        "Select all companies",
+        key="filter_all_companies",
+        on_change=_sync_select_all_to_multiselect,
+        args=("filter_all_companies", "filter_company_uids", company_options),
+    )
+    st.sidebar.multiselect(
+        "Company filter",
+        options=company_options,
+        key="filter_company_uids",
+        format_func=lambda uid: company_labels.get(str(uid), str(uid)),
+        help="Shrinks the dashboard universe to the selected companies. The detail selector below chooses the focused company.",
+        on_change=_sync_multiselect_to_select_all,
+        args=("filter_all_companies", "filter_company_uids", company_options),
+    )
 
 
 def resolve_filtered_universe(
@@ -136,70 +245,82 @@ def resolve_filtered_universe(
         lc_df[col] = lc_df[col].astype(str).str.strip().str.upper() == "TRUE"
 
     active_counts = lc_df[LIFECYCLE_STAGES].sum(axis=1)
-    full_ids = set(lc_df.loc[active_counts == 5, "Unique_ID"])
+    full_ids = set(lc_df.loc[active_counts == 5, "Unique_ID"].astype(str))
 
+    master_uids = set(master["Unique_ID"].dropna().astype(str))
     if lifecycle_choice == "Full-cycle only":
-        pool_ids = set(master.loc[master["Unique_ID"].isin(full_ids), "Unique_ID"])
+        pool_ids = master_uids.intersection(full_ids)
     elif lifecycle_choice == "Non-full-cycle only":
-        pool_ids = set(master.loc[~master["Unique_ID"].isin(full_ids), "Unique_ID"])
+        pool_ids = master_uids - full_ids
     else:
-        pool_ids = set(master["Unique_ID"])
+        pool_ids = master_uids
 
     profile_merged = pd.DataFrame({"Unique_ID": list(pool_ids)}).merge(
-        profile,
+        profile.assign(Unique_ID=profile["Unique_ID"].astype(str)),
         on="Unique_ID",
         how="left",
     )
 
-    selected_tas = st.session_state.get("filter_tas", [])
-    if selected_tas:
-        ta_tax = load_therapeutic_area_taxonomy()
+    # Therapeutic area: all selected = no restriction; empty = no universe.
+    ta_tax = _active_taxonomy_rows(load_therapeutic_area_taxonomy())
+    all_tas = ta_tax["Therapeutic_Area"].dropna().astype(str).tolist()
+    selected_tas = [x for x in st.session_state.get("filter_tas", []) if x in all_tas]
+    if not selected_tas:
+        pool_ids = set()
+    elif set(selected_tas) != set(all_tas):
         selected_cols = (
             ta_tax[ta_tax["Therapeutic_Area"].isin(selected_tas)]["Profile_Column"]
             .dropna()
             .astype(str)
             .tolist()
         )
-
         valid_cols = [c for c in selected_cols if c in profile_merged.columns]
         if valid_cols:
             ta_mask = _normalise_yn_flags(profile_merged, valid_cols).eq("Y")
-            passed_ta = profile_merged.loc[ta_mask.any(axis=1), "Unique_ID"]
+            passed_ta = profile_merged.loc[ta_mask.any(axis=1), "Unique_ID"].astype(str)
             pool_ids = pool_ids.intersection(set(passed_ta))
         else:
             pool_ids = set()
-    else:
-        # Explicitly clearing all therapeutic areas means no therapeutic-area universe is selected.
-        pool_ids = set()
 
-    selected_modalities = st.session_state.get("filter_modalities", [])
-    if selected_modalities:
-        mo_tax = load_modality_taxonomy()
+    # Modality: all selected = no restriction; empty = no universe.
+    mo_tax = _active_taxonomy_rows(load_modality_taxonomy())
+    all_modalities = mo_tax["Modality_Name"].dropna().astype(str).tolist()
+    selected_modalities = [x for x in st.session_state.get("filter_modalities", []) if x in all_modalities]
+    if not selected_modalities:
+        pool_ids = set()
+    elif set(selected_modalities) != set(all_modalities):
         selected_cols = (
             mo_tax[mo_tax["Modality_Name"].isin(selected_modalities)]["Profile_Column"]
             .dropna()
             .astype(str)
             .tolist()
         )
-
         valid_cols = [c for c in selected_cols if c in profile_merged.columns]
         if valid_cols:
             mo_mask = _normalise_yn_flags(profile_merged, valid_cols).eq("Y")
-            passed_mo = profile_merged.loc[mo_mask.any(axis=1), "Unique_ID"]
+            passed_mo = profile_merged.loc[mo_mask.any(axis=1), "Unique_ID"].astype(str)
             pool_ids = pool_ids.intersection(set(passed_mo))
         else:
             pool_ids = set()
 
+    # Company universe filter: all selected = no restriction; empty = no universe.
+    all_companies = _ordered_company_ids(master)
+    selected_companies = [str(x) for x in st.session_state.get("filter_company_uids", []) if str(x) in all_companies]
+    if not selected_companies:
+        pool_ids = set()
+    elif set(selected_companies) != set(all_companies):
+        pool_ids = pool_ids.intersection(set(selected_companies))
+
     current_sel = st.session_state.selected_company_uid
     if current_sel not in pool_ids and pool_ids:
-        fin_pool = financials_latest[financials_latest["Unique_ID"].isin(pool_ids)].copy()
+        fin_pool = financials_latest[financials_latest["Unique_ID"].astype(str).isin(pool_ids)].copy()
         if not fin_pool.empty:
             largest = fin_pool.sort_values("Market_Cap_USD_M", ascending=False).iloc[0]["Unique_ID"]
-            st.session_state.selected_company_uid = largest
+            st.session_state.selected_company_uid = str(largest)
         else:
-            master_pool = master[master["Unique_ID"].isin(pool_ids)].copy()
+            master_pool = master[master["Unique_ID"].astype(str).isin(pool_ids)].copy()
             if not master_pool.empty:
                 first = master_pool.sort_values("Company Name").iloc[0]["Unique_ID"]
-                st.session_state.selected_company_uid = first
+                st.session_state.selected_company_uid = str(first)
 
     return pool_ids
