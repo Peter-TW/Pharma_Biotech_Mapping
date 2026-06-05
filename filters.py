@@ -77,21 +77,6 @@ def _first_or_none(values: list[str]) -> str | None:
     return values[0] if values else None
 
 
-# ── Select-all callbacks ─────────────────────────────────────────────
-
-def _sync_select_all_to_multiselect(all_key: str, list_key: str, options: list[str]) -> None:
-    """Checkbox callback: checking selects all, unchecking clears the list."""
-    if st.session_state.get(all_key, False):
-        st.session_state[list_key] = list(options)
-    else:
-        st.session_state[list_key] = []
-
-
-def _sync_multiselect_to_select_all(all_key: str, list_key: str, options: list[str]) -> None:
-    """Multiselect callback: keep the select-all checkbox in sync."""
-    selected = st.session_state.get(list_key, [])
-    st.session_state[all_key] = bool(options) and set(selected) == set(options)
-
 
 def init_filter_state(master: pd.DataFrame) -> None:
     """Initialize st.session_state keys with defaults. No-op if already set."""
@@ -126,11 +111,6 @@ def init_filter_state(master: pd.DataFrame) -> None:
     if "filter_modalities" not in st.session_state:
         st.session_state.filter_modalities = active_modalities
 
-    if "filter_company_uids" not in st.session_state:
-        st.session_state.filter_company_uids = _ordered_company_ids(master)
-
-    if "filter_all_companies" not in st.session_state:
-        st.session_state.filter_all_companies = True
 
     if "selected_company_uid" not in st.session_state:
         ids = _ordered_company_ids(master)
@@ -218,33 +198,6 @@ def render_sidebar_filters(
             help="Active-in filter: keeps companies with Y in the selected modality column.",
         )
 
-    # ── Company universe dropdown ────────────────────────────────────
-    # Company filtering remains a multi-select because users may want a custom peer group.
-    # The focused company selector in app.py remains the single selectbox for detail views.
-    company_options = _ordered_company_ids(master)
-    company_labels = _company_label_map(master)
-
-    current_companies = [str(x) for x in st.session_state.get("filter_company_uids", [])]
-    st.session_state.filter_company_uids = [x for x in current_companies if x in company_options]
-    if st.session_state.get("filter_all_companies", False):
-        st.session_state.filter_company_uids = list(company_options)
-
-    st.sidebar.checkbox(
-        "Select all companies",
-        key="filter_all_companies",
-        on_change=_sync_select_all_to_multiselect,
-        args=("filter_all_companies", "filter_company_uids", company_options),
-    )
-    st.sidebar.multiselect(
-        "Company filter",
-        options=company_options,
-        key="filter_company_uids",
-        format_func=lambda uid: company_labels.get(str(uid), str(uid)),
-        help="Shrinks the dashboard universe to the selected companies. The detail selector below chooses the focused company.",
-        on_change=_sync_multiselect_to_select_all,
-        args=("filter_all_companies", "filter_company_uids", company_options),
-    )
-
 
 def resolve_filtered_universe(
     master: pd.DataFrame,
@@ -320,14 +273,6 @@ def resolve_filtered_universe(
                 pool_ids = pool_ids.intersection(set(passed_mo))
             else:
                 pool_ids = set()
-
-    # Company universe filter: all selected = no restriction; empty = no universe.
-    all_companies = _ordered_company_ids(master)
-    selected_companies = [str(x) for x in st.session_state.get("filter_company_uids", []) if str(x) in all_companies]
-    if not selected_companies:
-        pool_ids = set()
-    elif set(selected_companies) != set(all_companies):
-        pool_ids = pool_ids.intersection(set(selected_companies))
 
     current_sel = st.session_state.selected_company_uid
     if current_sel not in pool_ids and pool_ids:
